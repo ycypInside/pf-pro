@@ -69,6 +69,8 @@ function doGet(e) {
     var p = requestParams_(e);
     var auth = decideAuth_(p.token, scriptProp_('API_TOKEN'));
     if (auth) return json_({ ok: false, error: auth.error, reason: auth.reason });
+    // Redirected POSTs arrive here with a query token and no q. Do not answer unknown q.
+    if (lostPostBody_(p)) return json_({ ok: false, error: 'parse_error', reason: 'lost_body' });
     if (p.q === 'health') return json_({ ok: true, schema_version: settings_().schema_version, at: nowIso_() });
     var extra = [p.from || '', p.to || '', p.period || '', p.benchmark || '', p.limit || ''].join('|');
     var payload = cachedGet_(String(p.q || '') + '|' + extra, function () { return routeGet_(p); });

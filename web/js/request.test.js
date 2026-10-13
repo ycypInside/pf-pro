@@ -10,7 +10,7 @@ const context = {};
 createContext(context);
 runInContext(readFileSync(path.join(root, 'apps-script/Request.js'), 'utf8'), context);
 
-const { decideAuth_, mergeRequestParams_, fxNeedsFetch_, presentedToken_, publicWrite_, safeJsonText_ } = context;
+const { decideAuth_, mergeRequestParams_, fxNeedsFetch_, presentedToken_, publicWrite_, safeJsonText_, lostPostBody_ } = context;
 
 function authReason(presented, stored) {
   const result = decideAuth_(presented, stored);
@@ -79,6 +79,16 @@ test('JSON text never comes back empty', () => {
   const circular = {};
   circular.self = circular;
   assert.equal(safeJsonText_(circular), '{"ok":false,"error":"server"}');
+});
+
+test('a redirected POST is a lost body when q is missing or m=post', () => {
+  assert.equal(lostPostBody_({ token: 'secret', m: 'post' }), true);
+  assert.equal(lostPostBody_({ token: ' secret ', q: '' }), true);
+  assert.equal(lostPostBody_({ token: 'secret' }), true);
+  assert.equal(lostPostBody_({ token: 'secret', q: 'summary', m: 'post' }), true);
+  assert.equal(lostPostBody_({ token: 'secret', q: 'summary' }), false);
+  assert.equal(lostPostBody_({ m: 'post' }), false);
+  assert.equal(lostPostBody_({ q: 'health' }), false);
 });
 
 test('BOT fx is fetched only when today is missing', () => {
