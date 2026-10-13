@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -13,7 +13,7 @@ const forbidden = [
   [':87', '66'].join(''),
 ];
 
-const textExt = new Set(['.js', '.gs', '.md', '.html', '.css', '.json', '.yml', '.yaml', '.svg', '.txt']);
+const textExt = new Set(['.js', '.gs', '.md', '.html', '.css', '.json', '.yml', '.yaml', '.svg', '.txt', '.webmanifest']);
 const skip = new Set(['.git', 'node_modules']);
 
 function walk(dir, out = []) {
@@ -52,6 +52,32 @@ if (!api.includes('localStorage')) hits.push('api.js must keep the endpoint in l
 const html = readFileSync(path.join(root, 'web/index.html'), 'utf8');
 if (!html.includes('./js/main.js')) hits.push('index.html must load the module with a relative path');
 if (!html.includes('lang="zh-Hant"')) hits.push('index.html must be Traditional Chinese');
+const homeScreen = [
+  'rel="apple-touch-icon" href="icons/apple-touch-icon.png"',
+  'rel="manifest" href="manifest.webmanifest"',
+  'name="apple-mobile-web-app-capable" content="yes"',
+  'name="apple-mobile-web-app-title" content="PF Pro"',
+  'name="apple-mobile-web-app-status-bar-style"',
+  'href="icons/icon-192.png"',
+];
+for (const snippet of homeScreen) {
+  if (!html.includes(snippet)) hits.push(`index.html missing ${snippet}`);
+}
+if (/href="\//.test(html)) hits.push('index.html uses a root-absolute link');
+
+const manifestPath = path.join(root, 'web/manifest.webmanifest');
+const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+if (manifest.name !== 'PF Pro' || manifest.short_name !== 'PF Pro') hits.push('manifest name must be PF Pro');
+if (manifest.display !== 'standalone') hits.push('manifest display must be standalone');
+if (manifest.theme_color !== '#1f2a5c' || manifest.background_color !== '#1f2a5c') hits.push('manifest colors must be navy');
+if (String(manifest.start_url).startsWith('/') || String(manifest.scope).startsWith('/')) hits.push('manifest start/scope must be relative');
+const sizes = new Set((manifest.icons || []).map((icon) => icon.sizes));
+if (!sizes.has('192x192') || !sizes.has('512x512')) hits.push('manifest must include 192 and 512 icons');
+for (const icon of manifest.icons || []) {
+  if (String(icon.src).startsWith('/')) hits.push(`manifest icon ${icon.src} is root-absolute`);
+  else if (!existsSync(path.join(root, 'web', icon.src))) hits.push(`missing ${icon.src}`);
+}
+if (!existsSync(path.join(root, 'web/icons/apple-touch-icon.png'))) hits.push('missing apple touch icon');
 
 const syntax = files.filter((file) => ['.js', '.gs'].includes(path.extname(file)));
 const scratch = mkdtempSync(path.join(tmpdir(), 'pf-syntax-'));
