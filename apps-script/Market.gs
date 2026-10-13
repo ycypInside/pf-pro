@@ -85,79 +85,54 @@ function heldQty_(accountId, assetId) {
 
 function computeHoldings_() {
   var assets = assetsById_();
-  var trades = readTable_('Investment_Trades').filter(function (t) { return t.status === 'active'; });
-  trades.sort(function (a, b) {
-    var da = fmtDate_(a.trade_date), db = fmtDate_(b.trade_date);
-    if (da !== db) return da < db ? -1 : 1;
-    return String(a.trade_id) < String(b.trade_id) ? -1 : 1;
-  });
-  var book = {};
-  trades.forEach(function (t) {
-    var key = t.account_id + '|' + t.asset_id;
-    if (!book[key]) book[key] = { account_id: t.account_id, asset_id: t.asset_id, qty: 0, cost: 0, costTwd: 0 };
-    var b = book[key];
-    var q = num_(t.quantity);
-    var gross = num_(t.gross_amount);
-    var fee = num_(t.fee);
-    var tax = num_(t.tax);
-    var fx = num_(t.fx_rate) || 1;
-    var side = t.side;
-    if (side === 'buy' || side === 'dividend_reinvest' || side === 'transfer_in') {
-      var add = gross + fee + tax;
-      b.cost = round4_(b.cost + add);
-      b.costTwd = round2_(b.costTwd + round2_(add * fx));
-      b.qty = round4_(b.qty + q);
-    } else if (side === 'sell' || side === 'maturity' || side === 'transfer_out') {
-      var avg = b.qty ? b.cost / b.qty : 0;
-      var avgT = b.qty ? b.costTwd / b.qty : 0;
-      b.cost = round4_(Math.max(0, b.cost - avg * q));
-      b.costTwd = round2_(Math.max(0, b.costTwd - avgT * q));
-      b.qty = round4_(b.qty - q);
-      if (b.qty <= 0.0000001) { b.qty = 0; b.cost = 0; b.costTwd = 0; }
-    } else if (side === 'split') {
-      b.qty = round4_(b.qty + q);
-      if (fee || tax) {
-        b.cost = round4_(b.cost + fee + tax);
-        b.costTwd = round2_(b.costTwd + round2_((fee + tax) * fx));
-      }
-    }
-  });
+  var replay = pfReplay(readTable_('Investment_Trades').filter(function (t) { return t.status === 'active'; }).map(function (t) {
+    return {
+      id: t.trade_id, date: fmtDate_(t.trade_date), account_id: t.account_id, asset_id: t.asset_id, side: t.side,
+      quantity: num_(t.quantity), gross: num_(t.gross_amount), fee: num_(t.fee), tax: num_(t.tax), fx: num_(t.fx_rate) || 1
+    };
+  }));
 
   var idx = indexQuotes_(readTable_('Prices_FX'));
   var days = staleDaysMap_();
   var asOf = today_();
   var out = [];
-  Object.keys(book).forEach(function (key) {
-    var b = book[key];
+  Object.keys(replay.books).forEach(function (key) {
+    var b = replay.books[key];
     if (!(b.qty > 0)) return;
     var asset = assets[b.asset_id] || {};
     var quote = pickQuote_(asset, idx);
     var ccy = asset.currency || (quote ? quote.currency : '');
-    var price = quote ? num_(quote.value) : '';
+    var price = quote ? num_(quote.value) : null;
     var priceDate = quote ? fmtDate_(quote.date) : '';
     var stale = quote ? isStaleKind_(quote.kind, quote.date, days) : true;
     var fx = latestFxFromIndex_(ccy, idx);
     var fxRate = fx ? fx.value : null;
-    var mv = price === '' ? '' : round4_(b.qty * price);
-    var mvTwd = (mv === '' || !fxRate) ? '' : round2_(mv * fxRate);
+    var u = pfUnrealized(b, price, fxRate);
     out.push({
       account_id: b.account_id,
       asset_id: b.asset_id,
       as_of: asOf,
       quantity: b.qty,
-      avg_cost: b.qty ? round4_(b.cost / b.qty) : 0,
+      avg_cost: u.avg_cost,
       cost_basis: round4_(b.cost),
       cost_basis_twd: round2_(b.costTwd),
-      last_price: price,
+      last_price: price === null ? '' : price,
       price_date: priceDate,
+      price_kind: quote ? quote.kind : '',
       is_stale: stale,
-      market_value: mv,
-      market_value_twd: mvTwd,
-      unrealized_pl_twd: mvTwd === '' ? '' : round2_(mvTwd - b.costTwd),
+      market_value: u.market_value,
+      market_value_twd: u.market_value_twd,
+      unrealized_pl_twd: u.total,
+      unrealized_price_twd: u.price_effect,
+      unrealized_fx_twd: u.fx_effect,
+      realized_pl_twd: b.realizedTotal,
+      realized_price_twd: b.realizedPrice,
+      realized_fx_twd: b.realizedFx,
       cost_method: 'moving_avg',
       name: asset.name || '',
       symbol: asset.symbol || '',
-      currency: ccy
+      currency: ccy,
+      asset_class: asset.asset_class || ''
     });
   });
   out.sort(function (a, b) { return String(a.account_id).localeCompare(String(b.account_id)) || String(a.asset_id).localeCompare(String(b.asset_id)); });

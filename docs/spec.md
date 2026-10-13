@@ -91,3 +91,23 @@
 `add_transfer` 的 `data` 形狀：`{ date, from, to, flow_class, description?, fee? }`。`from.amount` 為負、`to.amount` 為正。
 
 重送同一個 `request_id` 且內容相同時，回應帶 `replay: true`，不會再寫一筆。
+
+## 績效與配置
+
+事實表不因績效重算而改寫。持倉用移動平均，賣出按均價釋放成本。台幣損益拆成價格效果與匯率效果：價格效果用期末匯率，匯率效果用成本上的匯率，兩者加總等於台幣損益。
+
+外部本金（`flow_class=external` 且不是交易現金腿）不計入報酬。股息、利息、費用另列。內部轉帳在投資組合層互相抵消，帳戶層仍算資金進出。
+
+- 時間加權：快照淨值逐日連結；兩點之間超過一天時用 Modified Dietz，現金流在期末的權重為 0。快照不足則改由交易與報價推算。
+- 金錢加權：XIRR，實際天數除以 365。組合、帳戶、持倉都算。
+- 最大回撤取成長指數的峰谷。
+- 指標寫入 `Benchmarks`，只新增不覆寫。預設 `0050.TW`、`^TWII`、`SPY`，可用 Settings `benchmarks` 改。`fetchBenchmarks` 會抓公開報價；Yahoo 失敗時，台股代碼改走證交所月報。
+- 配置比對 Settings `target_allocation`（例如 `{"stock":0.6,"bond":0.2,"cash":0.2}`）與 `rebalance_band_pct`（預設 5，單位是百分點）。基金與 ETF 若目標沒有單獨鍵，併入股票。
+
+讀取：
+
+- `q=performance&period=MTD|YTD|1Y|ALL`，可加 `benchmark=`。
+- `q=allocation`
+- `q=holdings` 另含價格／匯率拆解與報價狀態。
+
+`action=refresh_benchmarks` 補指標價格。交易與收支寫入後會重算 `Cashflows`，不改原始交易。

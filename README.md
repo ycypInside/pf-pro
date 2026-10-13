@@ -11,6 +11,8 @@
 頁面：
 
 - **總覽**：淨資產、帳戶餘額（原幣與台幣）、本月收支分類、過期報價、債券最後估值日、資料檢查。
+- **績效**：時間加權、金錢加權、最大回撤、價格與匯率損益、淨值對指標、回撤。
+- **配置**：實際與目標比重、再平衡建議、過期報價與最後估值日。
 - **記帳**：支出／收入、成對轉帳、投資交易、手動報價。每次送出產生 UUID `request_id`；連線失敗時重試沿用同一個 id。成功、重複送出、拒絕會分開顯示。
 - **明細**：最近紀錄。一般收支的「修正」會作廢舊筆並寫入新筆；轉帳整組作廢；投資交易連同現金腿一起作廢。
 - **設定**：網址、權杖、測試連線（`q=health`）。
@@ -25,13 +27,13 @@ GitHub Actions（`.github/workflows/pages.yml`）會在 `main` 上把 `web/` 發
 
 ## 後端
 
-`apps-script/` 是已部署腳本的版本。第 2 階段若要讓記帳頁的投資交易、手動報價，以及總覽的報價／持倉可用，需要把下列檔案 `clasp push` 後重新部署：
+`apps-script/` 是已部署腳本的版本。第 3 階段的績效、配置與持倉拆解要生效，需要把下列檔案 `clasp push` 後重新部署，並再執行一次 `installTriggers`（每日 22:00 補指標）：
 
 - `Code.gs`
-- `Market.gs`（新檔）
-- `Util.gs`
-- `Schema.gs`
+- `Market.gs`
 - `Jobs.gs`
+- `Performance.gs`（新檔）
+- `PerfMath.js`（新檔，純計算，測試也跑這份）
 
 既有的 `q=health|accounts|balances|income_expense|checks` 仍可用。`incomeexpense` 是 `income_expense` 的別名。`balances` 多了台幣金額與 `net_worth`。
 
