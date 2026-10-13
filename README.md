@@ -34,3 +34,5 @@ GitHub Actions（`.github/workflows/pages.yml`）會在 `main` 上把 `web/` 發
 - `Jobs.gs`
 
 既有的 `q=health|accounts|balances|income_expense|checks` 仍可用。`incomeexpense` 是 `income_expense` 的別名。`balances` 多了台幣金額與 `net_worth`。
+
+網站：https://ycypinside.github.io/pf-pro/
