@@ -201,5 +201,7 @@ test('categories keep the sign the report stores', () => {
 test('errors stay in Traditional Chinese without leaking a token', () => {
   assert.match(explainError('unauthorized'), /權杖/);
   assert.match(explainError('unknown action'), /部署/);
+  assert.match(explainError('offline'), /沒有網路/);
+  assert.match(explainError('連線失敗'), /重試/);
   assert.equal(stableString({ b: 1, a: { d: 2, c: 3 } }), '{"a":{"c":3,"d":2},"b":1}');
 });

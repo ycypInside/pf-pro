@@ -25,22 +25,20 @@ function validateTxn_(t, accounts, opts) {
   if (!acc) fail_('V1', 'unknown account ' + t.account_id);
   // V2 currency / fx
   if (t.currency !== acc.currency) fail_('V2', 'currency ' + t.currency + ' != account ' + acc.currency);
-  if (t.currency === 'TWD' && Number(t.fx_rate) !== 1) fail_('V2', 'TWD fx_rate must be 1');
-  var expect = round2_(Number(t.amount) * Number(t.fx_rate));
+  if (!ckTwdFxOk_(t.currency, t.fx_rate)) fail_('V2', 'TWD fx_rate must be 1');
+  var expect = ckExpectTwd_(t.amount, t.fx_rate);
   if (t.amount_twd === undefined || t.amount_twd === '') t.amount_twd = expect;
-  else if (Math.abs(Number(t.amount_twd) - expect) > 0.005) fail_('V2', 'amount_twd must be ' + expect);
+  else if (!ckAmountTwdOk_(t.amount, t.fx_rate, t.amount_twd)) fail_('V2', 'amount_twd must be ' + expect);
   // V8 date / active
   if (acc.status !== 'active') fail_('V8', 'account not active');
-  if (t.date < fmtDate_(acc.opening_date)) fail_('V8', 'date before account opening_date');
+  if (!ckDateOnOrAfter_(t.date, fmtDate_(acc.opening_date))) fail_('V8', 'date before account opening_date');
   // transfer fields
   if (TRANSFER_TYPES.indexOf(t.txn_type) >= 0) {
     if (!t.transfer_group_id || !t.counterparty_account_id) fail_('V3', 'transfer needs transfer_group_id + counterparty_account_id');
     if (!accounts[t.counterparty_account_id]) fail_('V3', 'unknown counterparty');
   }
   // V12 investment account inflow must be external/internal
-  if (String(acc.is_investment).toUpperCase() === 'TRUE' && Number(t.amount) > 0 &&
-      ['transfer_in', 'fx_in', 'income'].indexOf(t.txn_type) >= 0 &&
-      ['external', 'internal'].indexOf(t.flow_class) < 0) fail_('V12', 'investment inflow must be external/internal');
+  if (!ckInvestmentInflowOk_(acc.is_investment, t.amount, t.txn_type, t.flow_class)) fail_('V12', 'investment inflow must be external/internal');
   // V7 negative balance (warning)
   if (String(settings_().allow_negative_balance_check).toUpperCase() !== 'FALSE' &&
       ['credit_card', 'loan'].indexOf(acc.type) < 0) {
@@ -53,8 +51,8 @@ function validateTxn_(t, accounts, opts) {
 /** V3 for a pair being written together. */
 function validatePair_(a, b) {
   if (a.account_id === b.account_id) fail_('V3', 'transfer accounts must differ');
-  if (Math.sign(Number(a.amount)) === Math.sign(Number(b.amount))) fail_('V3', 'transfer legs must have opposite signs');
-  if (a.currency === b.currency && round2_(Number(a.amount) + Number(b.amount)) !== 0) fail_('V3', 'same-currency transfer must sum to 0');
+  if (!ckOppositeSignsOk_(a.amount, b.amount)) fail_('V3', 'transfer legs must have opposite signs');
+  if (!ckSameCurrencyOk_(a.currency, a.amount, b.currency, b.amount)) fail_('V3', 'same-currency transfer must sum to 0');
 }
 
 /** V6 helper: opening_balance + sum(active amounts). */

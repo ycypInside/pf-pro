@@ -22,7 +22,8 @@ function pfRoundDigits(n, digits) {
   var f = Math.pow(10, digits);
   var x = Number(n);
   if (!isFinite(x)) return 0;
-  return Math.round((Math.abs(x) * f) + 1e-6) / f * (x < 0 ? -1 : 1);
+  var rounded = Math.round((Math.abs(x) * f) + 1e-6) / f * (x < 0 ? -1 : 1);
+  return rounded === 0 ? 0 : rounded;
 }
 
 function pfRound2(n) { return pfRoundDigits(n, 2); }

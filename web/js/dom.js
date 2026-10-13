@@ -28,6 +28,11 @@ export function clear(node) {
   node.replaceChildren();
 }
 
+/** Skip null children. Element.append(null) would print the word "null". */
+export function mount(node, ...kids) {
+  for (const kid of kids) append(node, kid);
+}
+
 export function field(label, control, hint) {
   return h('label', { class: 'field' },
     h('span', { class: 'field-label' }, label),

@@ -17,20 +17,55 @@ const PAGES = {
 
 let generation = 0;
 
-function route() {
-  const name = (location.hash || '#/overview').replace(/^#\/?/, '').split('/')[0];
-  return PAGES[name] ? name : 'overview';
+function parseRoute(hash) {
+  const raw = (hash || '#/overview').replace(/^#\/?/, '');
+  const qIndex = raw.indexOf('?');
+  const path = qIndex === -1 ? raw : raw.slice(0, qIndex);
+  const queryText = qIndex === -1 ? '' : raw.slice(qIndex + 1);
+  const namePart = path.split('/')[0];
+  const name = PAGES[namePart] ? namePart : 'overview';
+  const query = {};
+  for (const [key, value] of new URLSearchParams(queryText)) query[key] = value;
+  return { name, query };
 }
 
-function go(name) {
-  const next = `#/${name}`;
-  if (location.hash === next) render();
+function hashFor(name, query) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query || {})) {
+    if (value !== undefined && value !== null && value !== '') params.set(key, String(value));
+  }
+  const qs = params.toString();
+  return `#/${name}${qs ? `?${qs}` : ''}`;
+}
+
+function samePlace(a, b) {
+  const keys = new Set([...Object.keys(a.query), ...Object.keys(b.query)]);
+  for (const key of keys) if ((a.query[key] || '') !== (b.query[key] || '')) return false;
+  return a.name === b.name;
+}
+
+function go(name, query) {
+  const next = hashFor(name, query);
+  if (samePlace(parseRoute(location.hash), parseRoute(next))) render();
   else location.hash = next;
+}
+
+function syncOffline() {
+  const app = document.querySelector('#app');
+  if (!app) return;
+  const existing = app.querySelector(':scope > .offline');
+  const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+  if (!offline) {
+    if (existing) existing.remove();
+    return;
+  }
+  if (existing) return;
+  app.prepend(h('p', { class: 'offline', role: 'status' }, '目前沒有網路。畫面可能不是最新的。'));
 }
 
 function render() {
   const gen = ++generation;
-  const name = route();
+  const { name, query } = parseRoute(location.hash);
   const page = PAGES[name];
   document.title = `${page.title} · 帳簿`;
   const app = document.querySelector('#app');
@@ -38,7 +73,9 @@ function render() {
   const main = h('main', { id: 'main', class: 'main' });
   app.append(
     h('header', { class: 'top' },
-      h('p', { class: 'brand' }, h('span', { class: 'chop', 'aria-hidden': 'true' }, '帳'), '帳簿'),
+      h('div', { class: 'top-row' },
+        h('p', { class: 'brand' }, h('span', { class: 'chop', 'aria-hidden': 'true' }, '帳'), '帳簿'),
+        h('button', { type: 'button', class: 'text-btn', onClick: () => render() }, '重新整理')),
       h('h1', {}, page.title)),
     main,
     h('nav', { class: 'nav', 'aria-label': '主要' },
@@ -47,11 +84,14 @@ function render() {
         class: key === name ? 'on' : '',
         'aria-current': key === name ? 'page' : false,
       }, icon(item.icon), h('span', {}, item.title)))));
-  page.render(main, { go, reload: render, alive: () => gen === generation });
+  syncOffline();
+  page.render(main, { go, reload: render, alive: () => gen === generation, query });
 }
 
 function boot() {
   window.addEventListener('hashchange', render);
+  window.addEventListener('online', syncOffline);
+  window.addEventListener('offline', syncOffline);
   if (!location.hash) history.replaceState(null, '', '#/overview');
   render();
 }

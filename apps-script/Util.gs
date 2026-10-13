@@ -21,7 +21,8 @@ function roundDigits_(x, digits) {
   if (isNaN(n) || n === 0) return n === 0 ? 0 : n;
   var sign = n < 0 ? -1 : 1;
   var factor = Math.pow(10, digits);
-  return sign * Math.round(Math.abs(n) * factor + 1e-6) / factor;
+  var rounded = sign * Math.round(Math.abs(n) * factor + 1e-6) / factor;
+  return rounded === 0 ? 0 : rounded;
 }
 function round2_(x) { return roundDigits_(x, 2); }
 function round4_(x) { return roundDigits_(x, 4); }

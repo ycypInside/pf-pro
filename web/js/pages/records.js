@@ -5,6 +5,7 @@ import { FLOW, FX_SOURCE, TXN_LABEL } from '../labels.js';
 import {
   activeAccounts,
   buildCashTxn,
+  explainError,
   indexBy,
   round2,
   taipeiMonth,
@@ -29,7 +30,7 @@ export async function renderRecords(main, ctx) {
   if (!txnR.ok) {
     main.append(h('div', { class: 'banner err', role: 'alert' },
       h('strong', {}, '讀不到明細'),
-      h('p', {}, txnR.error.message)));
+      h('p', {}, explainError(txnR.error && txnR.error.message))));
     return;
   }
   const accounts = activeAccounts(accountR.ok ? accountR.data.accounts : []);

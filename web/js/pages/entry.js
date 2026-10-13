@@ -1,5 +1,5 @@
 import { hasConfig, tryGet } from '../api.js';
-import { field, h, select } from '../dom.js';
+import { field, h, mount, select } from '../dom.js';
 import { formatMoney, formatTwd } from '../format.js';
 import {
   ASSET_CLASS,
@@ -18,6 +18,7 @@ import {
   buildPrice,
   buildTrade,
   buildTransfer,
+  explainError,
   fxMap,
   indexBy,
   isYes,
@@ -30,6 +31,15 @@ import {
   taipeiMonth,
   tradeEconomics,
 } from '../money.js';
+import {
+  mergeEntryPreset,
+  readLastCash,
+  readTemplates,
+  rememberTemplate,
+  usableLastCash,
+  writeLastCash,
+  writeTemplates,
+} from '../prefs.js';
 import { createPoster, outcomeView } from '../submit.js';
 
 const CURRENCIES = ['TWD', 'USD', 'JPY', 'EUR', 'CNY', 'HKD', 'AUD', 'GBP'];
@@ -53,7 +63,7 @@ export async function renderEntry(main, ctx) {
   if (!accountsR.ok) {
     main.append(h('div', { class: 'banner err', role: 'alert' },
       h('strong', {}, '讀不到帳戶'),
-      h('p', {}, accountsR.error.message)));
+      h('p', {}, explainError(accountsR.error && accountsR.error.message))));
     return;
   }
   const accounts = activeAccounts(accountsR.data.accounts);
@@ -80,11 +90,21 @@ export async function renderEntry(main, ctx) {
     tabButton('trade', '投資'),
     tabButton('price', '報價'));
   const deck = h('div', {}, Object.values(panels));
-  main.append(
+  mount(main,
     assetsR.ok ? null : h('p', { class: 'hint' }, '標的清單需要更新後的後端。'),
     tabs,
     deck);
-  show('cash');
+  const initialTab = ['cash', 'transfer', 'trade', 'price'].includes(ctx.query && ctx.query.tab)
+    ? ctx.query.tab
+    : 'cash';
+  show(initialTab);
+  const saved = usableLastCash(readLastCash(localStorage), accounts.map((account) => account.account_id));
+  const query = ctx.query || {};
+  if (query.mode || query.account || query.category || query.kind) {
+    panels.cash.applyPreset(mergeEntryPreset(saved, query, { income: incomeCats, expense: expenseCats }));
+  } else if (saved) {
+    panels.cash.applyPreset(saved);
+  }
 
   function tabButton(id, label) {
     return h('button', { type: 'button', role: 'tab', dataset: { tab: id }, onClick: () => show(id) }, label);
@@ -133,6 +153,7 @@ export async function renderEntry(main, ctx) {
     const date = h('input', { name: 'date', type: 'date', value: today, required: true });
     const description = h('input', { name: 'description', placeholder: '選填' });
     const submit = h('button', { type: 'submit', class: 'btn primary' }, '入帳');
+    const chipBox = h('div', {});
     kindExpense.addEventListener('click', () => setIncome(false));
     kindIncome.addEventListener('click', () => setIncome(true));
     account.addEventListener('change', syncFx);
@@ -142,7 +163,9 @@ export async function renderEntry(main, ctx) {
       send(false);
     });
     category.value = expenseCats[0] || '';
+    paintChips();
     form.append(
+      chipBox,
       h('div', { class: 'seg two' }, kindExpense, kindIncome),
       incomeWrap,
       field('日期', date),
@@ -158,7 +181,38 @@ export async function renderEntry(main, ctx) {
       submit,
       status);
     syncFx();
+    form.applyPreset = applyPreset;
     return form;
+
+    function paintChips() {
+      const items = readTemplates(localStorage).filter((item) => accountsById[item.account_id]);
+      chipBox.hidden = !items.length;
+      chipBox.replaceChildren();
+      if (!items.length) return;
+      chipBox.append(h('div', { class: 'chips' }, items.map((item) => h('button', {
+        type: 'button',
+        class: 'chip',
+        onClick: () => applyPreset({
+          account_id: item.account_id,
+          category: item.category,
+          income: item.kind !== 'expense',
+          income_type: item.kind === 'dividend' || item.kind === 'interest' ? item.kind : 'income',
+          kind: item.kind,
+        }),
+      }, item.label || item.category))));
+    }
+
+    function applyPreset(preset) {
+      if (!preset) return;
+      if (preset.account_id && accountsById[preset.account_id]) account.value = preset.account_id;
+      if (preset.income_type === 'dividend' || preset.income_type === 'interest' || preset.kind === 'dividend' || preset.kind === 'interest') {
+        incomeType.value = preset.income_type === 'dividend' || preset.income_type === 'interest' ? preset.income_type : preset.kind;
+      }
+      if (preset.income === true || preset.income === false) setIncome(preset.income);
+      if (preset.category) category.value = preset.category;
+      if (preset.flow_class) flow.value = preset.flow_class;
+      syncFx();
+    }
 
     function setIncome(next) {
       incomeMode = next;
@@ -227,10 +281,28 @@ export async function renderEntry(main, ctx) {
       submit.disabled = false;
       if (!ctx.alive()) return;
       status.replaceChildren(outcomeView(outcome, () => send(true)));
-      if (outcome.res && outcome.res.ok && !outcome.res.replay) {
-        amount.value = '';
-        description.value = '';
-        preview.textContent = '';
+      if (outcome.res && outcome.res.ok) {
+        const kind = incomeMode ? incomeType.value : 'expense';
+        const kindName = kind === 'dividend' ? '股息' : kind === 'interest' ? '利息' : incomeMode ? '收入' : '支出';
+        writeLastCash({
+          account_id: txn.account_id,
+          category: txn.category,
+          income: incomeMode,
+          income_type: incomeMode ? incomeType.value : 'income',
+          flow_class: flow.value,
+        }, localStorage);
+        writeTemplates(rememberTemplate(readTemplates(localStorage), {
+          kind,
+          account_id: txn.account_id,
+          category: txn.category,
+          label: `${kindName} · ${txn.category}`,
+        }), localStorage);
+        paintChips();
+        if (!outcome.res.replay) {
+          amount.value = '';
+          description.value = '';
+          preview.textContent = '';
+        }
       }
     }
   }
