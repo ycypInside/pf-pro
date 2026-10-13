@@ -3,8 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test web/js/money.test.js web/js/format.test.js web/js/perf-math.test.js web/js/checks.test.js web/js/prefs.test.js web/js/request.test.js web/js/perf-cache.test.js",
+    "test": "node --test web/js/money.test.js web/js/format.test.js web/js/perf-math.test.js web/js/checks.test.js web/js/prefs.test.js web/js/request.test.js web/js/perf-cache.test.js && playwright test",
     "check": "node web/scripts/check-static.js",
     "build": "npm test && npm run check"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.0"
   }
 }

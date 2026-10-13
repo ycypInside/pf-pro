@@ -8,13 +8,18 @@ function doPost(e) {
   var lock = null;
   try {
     beginRequest_();
+    var params = requestParams_(e);
     var raw = e && e.postData && e.postData.contents;
-    if (!raw) return json_({ ok: false, error: 'bad json', reason: 'parse_error' });
+    // A 302 follows as GET and drops the body. Prefer the query token when the body token is blank.
+    if (!raw) {
+      var missingBody = decideAuth_(presentedToken_('', params.token), scriptProp_('API_TOKEN'));
+      if (missingBody) return json_({ ok: false, error: missingBody.error, reason: missingBody.reason });
+      return json_({ ok: false, error: 'bad json', reason: 'parse_error' });
+    }
     var body;
     try { body = JSON.parse(raw); } catch (parseErr) { return json_({ ok: false, error: 'bad json', reason: 'parse_error' }); }
-    var params = requestParams_(e);
-    // A 302 from script.google.com follows as GET and drops the body. The query token still arrives.
-    var auth = decideAuth_(body.token || params.token, scriptProp_('API_TOKEN'));
+    if (!body || typeof body !== 'object') return json_({ ok: false, error: 'bad json', reason: 'parse_error' });
+    var auth = decideAuth_(presentedToken_(body.token, params.token), scriptProp_('API_TOKEN'));
     if (auth) return json_({ ok: false, error: auth.error, reason: auth.reason });
     if (!body.request_id) return json_({ ok: false, error: 'request_id required' });
     var handler = ACTIONS[body.action];
@@ -38,7 +43,7 @@ function doPost(e) {
       idemRecord_(body.request_id, body.action, hash, 'ok', (res.ids || []).join(','));
       SpreadsheetApp.flush();
       bumpCache_();
-      return json_({ ok: true, result: res });
+      return json_(publicWrite_(body.action, res));
     } catch (err) {
       var status = err instanceof ValidationError ? 'rejected' : 'error';
       try { idemRecord_(body.request_id, body.action, hash, status, String(err && err.message).slice(0, 200)); } catch (ignore) {}
@@ -66,7 +71,12 @@ function doGet(e) {
     if (auth) return json_({ ok: false, error: auth.error, reason: auth.reason });
     if (p.q === 'health') return json_({ ok: true, schema_version: settings_().schema_version, at: nowIso_() });
     var extra = [p.from || '', p.to || '', p.period || '', p.benchmark || '', p.limit || ''].join('|');
-    return json_(cachedGet_(String(p.q || '') + '|' + extra, function () { return routeGet_(p); }));
+    var payload = cachedGet_(String(p.q || '') + '|' + extra, function () { return routeGet_(p); });
+    // HtmlService, or a throw inside JSON.stringify, serves an HTML page. That page
+    // 302s again, and a strict client counts the extra hop as a redirect loop.
+    // q=summary is the large GET that showed it. Every branch here returns ContentService JSON.
+    if (!payload || typeof payload !== 'object') payload = { ok: false, error: 'server' };
+    return json_(payload);
   } catch (err) {
     return json_({ ok: false, error: 'server' });
   }
@@ -291,8 +301,9 @@ var ACTIONS = {
   refresh_benchmarks: function () { return fetchBenchmarksBody_(); },
   run_snapshot: function () {
     if (fxNeedsFetch_(fxDate_('USDTWD'), today_())) fetchBotFxBody_();
-    var created = writeSnapshot_();
-    return { ids: [today_()], created: created !== false };
+    var date = today_();
+    var created = writeSnapshot_() === true;
+    return { ids: [date], created: created, snapshot_date: date };
   }
 };
 
@@ -308,4 +319,10 @@ function txnRecord_(d, ctx) {
   };
 }
 function strip_(o) { var c = {}; Object.keys(o).forEach(function (k) { if (k !== '_row') c[k] = o[k] instanceof Date ? fmtDate_(o[k]) : o[k]; }); return c; }
-function json_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
+function json_(o) {
+  try {
+    return ContentService.createTextOutput(safeJsonText_(o)).setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput('{"ok":false,"error":"server"}').setMimeType(ContentService.MimeType.JSON);
+  }
+}

@@ -396,6 +396,28 @@ export function shouldRetryGet(error, attempt, limit = 3) {
   return error.transient === true;
 }
 
+/** Keep looping benchmark chunks while either the envelope or the result says not done. */
+export function benchmarkChunkOpen(res) {
+  if (!res) return false;
+  if (res.done === false) return true;
+  const chunk = res.result || {};
+  return chunk.done === false;
+}
+
+/**
+ * POST token on the query string. searchParams is the normal path. If that
+ * string does not actually contain the token, append it so the request cannot leave without one.
+ */
+export function withQueryToken(apiUrl, token) {
+  const url = new URL(apiUrl);
+  const value = String(token == null ? '' : token);
+  url.searchParams.set('token', value);
+  const encoded = encodeURIComponent(value);
+  const text = url.toString();
+  if (encoded && (text.includes(encoded) || text.includes(value))) return text;
+  return `${text}${text.includes('?') ? '&' : '?'}token=${encoded}`;
+}
+
 /**
  * One automatic POST retry. A dropped body or a redirected GET comes back as
  * missing_token, parse_error, bad json, or unknown q. A real mismatch is not retried.

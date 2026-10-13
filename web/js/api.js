@@ -1,4 +1,4 @@
-import { isTransientError, shouldRetryGet, shouldRetryPost, validateEndpoint } from './money.js';
+import { isTransientError, shouldRetryGet, shouldRetryPost, validateEndpoint, withQueryToken } from './money.js';
 
 const URL_KEY = 'pfpro.apiUrl';
 const TOKEN_KEY = 'pfpro.token';
@@ -132,8 +132,7 @@ export async function apiGet(q, params = {}, config) {
  */
 export async function apiPost(action, data, requestId, config) {
   const { apiUrl, token } = endpoint(config);
-  const url = new URL(apiUrl);
-  url.searchParams.set('token', token);
+  const url = withQueryToken(apiUrl, token);
   const body = JSON.stringify({
     token,
     request_id: requestId,
@@ -144,7 +143,7 @@ export async function apiPost(action, data, requestId, config) {
   let last;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     if (attempt) await sleep(350);
-    last = await apiPostOnce(url.toString(), body);
+    last = await apiPostOnce(url, body);
     if (!shouldRetryPost(last, attempt)) return last;
   }
   return last;

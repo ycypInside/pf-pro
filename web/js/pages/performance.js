@@ -3,7 +3,7 @@ import { lineChart } from '../chart.js';
 import { h } from '../dom.js';
 import { formatPct, formatTwd } from '../format.js';
 import { kindLabel } from '../labels.js';
-import { explainError } from '../money.js';
+import { benchmarkChunkOpen, explainError } from '../money.js';
 import { createPoster, outcomeView } from '../submit.js';
 
 let period = 'YTD';
@@ -112,12 +112,13 @@ export async function renderPerformance(main, ctx) {
           const chunk = outcome.res.result || {};
           added += Number(chunk.added) || 0;
           const label = chunk.symbol ? `正在補 ${chunk.symbol}` : '正在補指標';
-          status.replaceChildren(h('p', { class: 'muted' }, chunk.done === false ? `${label}…` : '指標已更新'));
-          if (chunk.done !== false) break;
+          const open = benchmarkChunkOpen(outcome.res);
+          status.replaceChildren(h('p', { class: 'muted' }, open ? `${label}…` : '指標已更新'));
+          if (!open) break;
           guard += 1;
         }
         if (outcome && outcome.res && outcome.res.ok) {
-          const unfinished = outcome.res.result && outcome.res.result.done === false;
+          const unfinished = benchmarkChunkOpen(outcome.res);
           flash = unfinished
             ? `指標還在補，這次新增 ${added} 筆。再按一次會接下去。`
             : `指標已更新，新增 ${added} 筆。`;

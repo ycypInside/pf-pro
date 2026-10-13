@@ -62,6 +62,41 @@ function decideAuth_(presented, stored) {
   return null;
 }
 
+/**
+ * Body token wins when it has text. A blank or whitespace body token is missing,
+ * so the query token is used. A 302 can drop the POST body and leave only the query.
+ */
+function presentedToken_(bodyToken, queryToken) {
+  var body = bodyToken == null ? '' : String(bodyToken).trim();
+  var query = queryToken == null ? '' : String(queryToken).trim();
+  if (!body) return query;
+  return body;
+}
+
+/**
+ * Success envelope. run_snapshot and refresh_benchmarks also publish the fields
+ * callers check without opening result.
+ */
+function publicWrite_(action, res) {
+  var result = res || {};
+  var out = { ok: true, result: result };
+  if (action === 'run_snapshot') {
+    out.created = result.created === true;
+    out.snapshot_date = result.snapshot_date || '';
+  }
+  if (action === 'refresh_benchmarks') out.done = result.done === true;
+  return out;
+}
+
+/** JSON.stringify can return undefined or throw. Either becomes an HTML error page on Apps Script. */
+function safeJsonText_(value) {
+  try {
+    var text = JSON.stringify(value);
+    if (typeof text === 'string' && text) return text;
+  } catch (err) { /* circular or otherwise unusable */ }
+  return '{"ok":false,"error":"server"}';
+}
+
 /** True when today's BOT board rate is not in Prices_FX yet. */
 function fxNeedsFetch_(latestDate, today) {
   if (!latestDate) return true;
