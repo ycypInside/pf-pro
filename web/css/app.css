@@ -199,6 +199,7 @@ input:read-only { background: #f3eee4; }
   min-height: 32px;
 }
 .text-btn.danger { color: var(--red); }
+.text-btn[aria-pressed="true"] { font-weight: 700; color: var(--ink); }
 
 .seg.two { grid-template-columns: 1fr 1fr; }
 .seg {
@@ -252,7 +253,7 @@ input:read-only { background: #f3eee4; }
   width: min(100%, 560px);
   bottom: 0;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   background: rgba(251, 247, 239, 0.94);
   backdrop-filter: blur(10px);
   border-top: 1px solid var(--line);
@@ -265,12 +266,12 @@ input:read-only { background: #f3eee4; }
   gap: 2px;
   text-decoration: none;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   min-height: 48px;
   padding-top: 4px;
 }
 .nav a.on { color: var(--green-deep); font-weight: 650; }
-.nav svg { width: 22px; height: 22px; }
+.nav svg { width: 20px; height: 20px; }
 
 dialog.sheet {
   width: min(560px, 100%);
@@ -295,6 +296,43 @@ dialog.sheet::backdrop { background: rgba(22, 32, 28, 0.45); }
   .nav { position: sticky; bottom: 0; border-radius: 0 0 28px 28px; }
   dialog.sheet { margin: auto; border-radius: 20px; }
 }
+
+.metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.metric {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 12px;
+  box-shadow: var(--shadow);
+}
+.metric .k { margin: 0; color: var(--muted); font-size: 12px; }
+.metric .v { margin: 4px 0 0; font-size: 20px; letter-spacing: -0.03em; }
+.up { color: var(--green); }
+.down { color: var(--red); }
+.chart { width: 100%; height: auto; display: block; }
+.legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; color: var(--muted); font-size: 12px; }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 99px; margin-right: 4px; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 8px;
+  border-radius: 99px;
+  background: var(--dup);
+  color: var(--amber);
+  font-size: 12px;
+}
+.alloc { display: grid; gap: 6px; padding: 10px 0; border-top: 1px solid var(--line); }
+.alloc-top { display: flex; align-items: baseline; gap: 8px; }
+.alloc-top strong { flex: 1; }
+.alloc-track { position: relative; height: 10px; background: #efe6d6; border-radius: 99px; }
+.alloc-fill { display: block; height: 100%; border-radius: 99px; background: var(--green); }
+.alloc-target { position: absolute; top: -3px; width: 2px; height: 16px; background: #1f2a5c; }
 
 @media (prefers-reduced-motion: reduce) {
   * { scroll-behavior: auto; }

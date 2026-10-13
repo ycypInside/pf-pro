@@ -2,6 +2,7 @@
 function installTriggers() {
   ScriptApp.getProjectTriggers().forEach(function (t) { ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger('dailySnapshot').timeBased().atHour(23).everyDays(1).inTimezone(CONFIG.TZ).create();
+  ScriptApp.newTrigger('fetchBenchmarks').timeBased().atHour(22).everyDays(1).inTimezone(CONFIG.TZ).create();
   ScriptApp.newTrigger('purgeIdempotency').timeBased().atHour(3).everyDays(1).inTimezone(CONFIG.TZ).create();
   ScriptApp.newTrigger('weeklyBackup').timeBased().onWeekDay(ScriptApp.WeekDay.SUNDAY).atHour(4).inTimezone(CONFIG.TZ).create();
 }

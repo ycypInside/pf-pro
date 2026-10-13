@@ -11,7 +11,9 @@
 | Validation.gs | V1–V12 寫入前／每日檢查、V5 收支報表排除轉帳、V6 對帳 |
 | Idempotency.gs | V9：同 request_id 同 hash → 回原結果；hash 不同 → 拒絕；保留 90 天 |
 | Audit.gs | Audit_Log 只新增 |
-| Jobs.gs | 每日快照（V11、V13）、台銀即期中價抓取 `fetchBotFx`（只新增，失敗不寫）、觸發器安裝 |
+| Jobs.gs | 每日快照（V11、V13）、台銀即期中價抓取 `fetchBotFx`（只新增，失敗不寫）、觸發器安裝（含 22:00 `fetchBenchmarks`） |
+| PerfMath.js | 移動平均、價格／匯率損益、Modified Dietz、時間加權、XIRR、回撤、配置。不碰試算表 |
+| Performance.gs | `q=performance`、`q=allocation`、`q=holdings` 的組裝；重算 Cashflows；指標只新增 |
 | Backup.gs | 每週 Drive 備份、`restoreTest(backupId)` 還原測試、`verifySchema()` 表頭檢查 |
 | Schema.gs / Config.gs / Util.gs | 表頭、enum、共用函式 |
 
@@ -24,7 +26,7 @@
    - `API_TOKEN` = 自己產生的長亂數（例如 32 字元以上），不要提交到 GitHub
    - `BACKUP_FOLDER_ID` = （選填）備份資料夾 id
 4. 編輯器執行 `verifySchema` 一次（會要求授權），Log 應顯示 `All 13 headers match`。
-5. 執行 `installTriggers`：每日 23:00 快照、03:00 清冪等、週日 04:00 備份。
+5. 執行 `installTriggers`：每日 23:00 快照、22:00 指標、03:00 清冪等、週日 04:00 備份。改過程式後要再執行一次，觸發器才會更新。
 6. 部署 → 新增部署 → 網頁應用程式：執行身分「我」。存取權：
    - 只自己用：「只有我」（最安全，前端需登入 Google）
    - 給 GitHub Pages 前端：「任何人」＋ API_TOKEN 驗證（token 只存在使用者瀏覽器，不寫進 repo）
@@ -50,6 +52,6 @@ curl -L -X POST "$WEBAPP_URL" -H 'Content-Type: text/plain' -d '{
 
 ## 已知限制
 - 開帳（10/14）資料尚未匯入；Accounts 只有清單，opening_balance 留空待匯入。
-- Holdings 會在交易、報價、作廢後以移動平均整表重算。Cashflows、TWR／XIRR 仍屬第 3 階段。
+- Holdings 會在交易、報價、作廢後以移動平均整表重算。Cashflows 在收支與交易寫入後重算。績效數字在讀取時計算，不回寫事實表。
 - Sheet 保護：Audit_Log 與 Idempotency 目前是「警告」模式，部署後可改為鎖定只允許擁有者。
 - 讀表採整表讀取，資料量達數萬筆後再改為索引／快取。

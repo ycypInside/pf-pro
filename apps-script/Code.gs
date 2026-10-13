@@ -23,6 +23,10 @@ function doPost(e) {
     var ctx = { request_id: body.request_id, actor: body.actor || Session.getEffectiveUser().getEmail() || 'owner', client: body.client || 'web' };
     try {
       var res = handler(body.data || {}, ctx);
+      if (body.action === 'add_transaction' || body.action === 'add_transfer' || body.action === 'void_transaction' || body.action === 'replace_transaction' || body.action === 'add_trade' || body.action === 'void_trade') {
+        var cfWarn = safeRebuildCashflows_();
+        if (cfWarn) res.warnings = (res.warnings || []).concat([cfWarn]);
+      }
       idemRecord_(body.request_id, body.action, hash, 'ok', (res.ids || []).join(','));
       return json_({ ok: true, result: res });
     } catch (err) {
@@ -36,7 +40,7 @@ function doPost(e) {
 /**
  * Read-only endpoints.
  * GET ?token=..&q=health|accounts|balances|income_expense|incomeexpense|checks
- *     |transactions|trades|assets|prices|holdings|settings
+ *     |transactions|trades|assets|prices|holdings|settings|performance|allocation
  * Phase 2 adds the reads the web client needs. `incomeexpense` is an alias of `income_expense`.
  */
 function doGet(e) {
@@ -53,7 +57,9 @@ function doGet(e) {
     case 'trades': return json_(tradesPayload_(p.limit));
     case 'assets': return json_({ ok: true, assets: readTable_('Assets').map(strip_) });
     case 'prices': return json_(pricesPayload_());
-    case 'holdings': return json_({ ok: true, holdings: computeHoldings_() });
+    case 'holdings': return json_(holdingsPayload_());
+    case 'performance': return json_(performancePayload_(p.period, p.benchmark));
+    case 'allocation': return json_(allocationPayload_());
     case 'settings': return json_({ ok: true, settings: settings_() });
     default: return json_({ ok: false, error: 'unknown q' });
   }
@@ -185,7 +191,8 @@ var ACTIONS = {
   create_asset: function (d, ctx) { return actionCreateAsset_(d, ctx); },
   add_trade: function (d, ctx) { return actionAddTrade_(d, ctx); },
   void_trade: function (d, ctx) { return actionVoidTrade_(d, ctx); },
-  add_price: function (d, ctx) { return actionAddPrice_(d, ctx); }
+  add_price: function (d, ctx) { return actionAddPrice_(d, ctx); },
+  refresh_benchmarks: function () { return fetchBenchmarks(); }
 };
 
 function txnRecord_(d, ctx) {

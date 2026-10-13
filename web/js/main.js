@@ -1,11 +1,15 @@
 import { clear, h, icon } from './dom.js';
+import { renderAllocation } from './pages/allocation.js';
 import { renderDashboard } from './pages/dashboard.js';
 import { renderEntry } from './pages/entry.js';
+import { renderPerformance } from './pages/performance.js';
 import { renderRecords } from './pages/records.js';
 import { renderSettings } from './pages/settings.js';
 
 const PAGES = {
   overview: { title: '總覽', render: renderDashboard, icon: 'M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z' },
+  performance: { title: '績效', render: renderPerformance, icon: 'M4 19V5M4 19h16M8 15l3.2-4 2.6 2.4L18 8' },
+  allocation: { title: '配置', render: renderAllocation, icon: 'M12 5a7 7 0 1 0 .01 0M12 12V5M12 12l5 3' },
   entry: { title: '記帳', render: renderEntry, icon: 'M12 5v14M5 12h14' },
   records: { title: '明細', render: renderRecords, icon: 'M8 7h11M8 12h11M8 17h11M5 7h.01M5 12h.01M5 17h.01' },
   settings: { title: '設定', render: renderSettings, icon: 'M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM12 3.5v2.2M12 18.3v2.2M4.8 6.2l1.6 1.6M17.6 16.2l1.6 1.6M3.5 12h2.2M18.3 12h2.2M4.8 17.8l1.6-1.6M17.6 7.8l1.6-1.6' },

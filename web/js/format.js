@@ -30,6 +30,15 @@ export function formatQty(value) {
   return sign + text;
 }
 
+export function formatPct(value) {
+  if (value === null || value === undefined || value === '') return '—';
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '—';
+  const pct = n * 100;
+  const sign = pct > 0 ? '+' : pct < 0 ? '−' : '';
+  return `${sign}${grouped(Math.abs(pct), 2)}%`;
+}
+
 export function formatRate(value) {
   if (value === null || value === undefined || value === '') return '—';
   const n = Number(value);
