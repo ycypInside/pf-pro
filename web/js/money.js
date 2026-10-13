@@ -384,12 +384,28 @@ export function splitCategories(byCategory) {
   return { income, expense };
 }
 
+const TRANSIENT_ERRORS = new Set(['auth_unavailable', 'busy', 'server', 'not_found']);
+
+export function isTransientError(message) {
+  return TRANSIENT_ERRORS.has(String(message || '').trim());
+}
+
+export function shouldRetryGet(error, attempt, limit = 3) {
+  if (!error || attempt >= limit - 1) return false;
+  if (error.offline || error.config) return false;
+  return error.transient === true;
+}
+
 export function explainError(message) {
   const text = String(message || '').trim();
   if (!text) return '發生錯誤';
   if (text === 'offline') return '目前沒有網路。恢復連線後再試。';
   if (text === '連線失敗') return '連線失敗。請檢查網路後重試。';
   if (text === 'unauthorized') return '權杖不正確，連線被拒絕。';
+  if (text === 'auth_unavailable') return '暫時讀不到權杖。這不是密碼錯誤，請再試一次。';
+  if (text === 'busy') return '帳簿正在寫入，請稍後再試。';
+  if (text === 'server') return '伺服器暫時沒有回應。請再試一次。';
+  if (text === 'not_found') return '帳簿暫時連不上。請再試一次。';
   if (text === 'unknown action') return '後端還沒有這個動作。請重新部署 Apps Script 後再試。';
   if (text === 'unknown q') return '後端還沒有這個查詢。請重新部署 Apps Script 後再試。';
   if (text === 'bad json') return '送出的內容不是合法的 JSON。';

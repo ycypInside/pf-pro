@@ -1,4 +1,4 @@
-import { validateEndpoint } from './money.js';
+import { isTransientError, shouldRetryGet, validateEndpoint } from './money.js';
 
 const URL_KEY = 'pfpro.apiUrl';
 const TOKEN_KEY = 'pfpro.token';
@@ -45,17 +45,38 @@ function throwIfOffline() {
 }
 
 async function readJson(res) {
+  if (res.status === 404) {
+    const error = new Error('not_found');
+    error.transient = true;
+    error.network = true;
+    error.status = res.status;
+    throw error;
+  }
+  if (res.status === 429 || res.status >= 500) {
+    const error = new Error('server');
+    error.transient = true;
+    error.network = true;
+    error.status = res.status;
+    throw error;
+  }
   const text = await res.text();
   try {
     return JSON.parse(text);
   } catch {
     const error = new Error('伺服器沒有回傳 JSON');
     error.network = true;
+    error.transient = true;
     throw error;
   }
 }
 
-export async function apiGet(q, params = {}, config) {
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const GET_WAITS = [0, 400, 1200];
+
+async function apiGetOnce(q, params = {}, config) {
   const { apiUrl, token } = endpoint(config);
   const url = new URL(apiUrl);
   url.searchParams.set('q', q);
@@ -75,6 +96,7 @@ export async function apiGet(q, params = {}, config) {
   } catch (cause) {
     const error = new Error('連線失敗');
     error.network = true;
+    error.transient = true;
     error.cause = cause;
     throw error;
   }
@@ -82,9 +104,24 @@ export async function apiGet(q, params = {}, config) {
   if (!json.ok) {
     const error = new Error(json.error || '讀取失敗');
     error.payload = json;
+    if (isTransientError(json.error)) error.transient = true;
     throw error;
   }
   return json;
+}
+
+export async function apiGet(q, params = {}, config) {
+  let last;
+  for (let attempt = 0; attempt < GET_WAITS.length; attempt += 1) {
+    if (GET_WAITS[attempt]) await sleep(GET_WAITS[attempt]);
+    try {
+      return await apiGetOnce(q, params, config);
+    } catch (error) {
+      last = error;
+      if (!shouldRetryGet(error, attempt, GET_WAITS.length)) throw error;
+    }
+  }
+  throw last;
 }
 
 /**

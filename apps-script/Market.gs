@@ -84,6 +84,8 @@ function heldQty_(accountId, assetId) {
 }
 
 function computeHoldings_() {
+  var bag = req_();
+  if (bag.holdings) return bag.holdings;
   var assets = assetsById_();
   var replay = pfReplay(readTable_('Investment_Trades').filter(function (t) { return t.status === 'active'; }).map(function (t) {
     return {
@@ -136,6 +138,7 @@ function computeHoldings_() {
     });
   });
   out.sort(function (a, b) { return String(a.account_id).localeCompare(String(b.account_id)) || String(a.asset_id).localeCompare(String(b.asset_id)); });
+  bag.holdings = out;
   return out;
 }
 
@@ -146,10 +149,7 @@ function safeRebuildHoldings_() {
 
 function rebuildHoldings_() {
   var rows = computeHoldings_();
-  var sh = sheet_('Holdings');
-  var last = sh.getLastRow();
-  if (last > 1) sh.deleteRows(2, last - 1);
-  rows.forEach(function (r) { appendRecord_('Holdings', r); });
+  replaceBody_('Holdings', rows);
   return rows;
 }
 
@@ -246,6 +246,8 @@ function compareRecent_(a, b) {
 }
 
 function pricesPayload_() {
+  var bag = req_();
+  if (bag.pricesPayload) return bag.pricesPayload;
   var assets = readTable_('Assets').map(strip_);
   var idx = indexQuotes_(readTable_('Prices_FX'));
   var days = staleDaysMap_();
@@ -283,7 +285,8 @@ function pricesPayload_() {
       currency: a.currency, is_stale: true, missing: true
     });
   });
-  return { ok: true, quotes: quotes, stale: quotes.filter(function (q) { return q.is_stale; }), last_valuations: valuations };
+  bag.pricesPayload = { ok: true, quotes: quotes, stale: quotes.filter(function (q) { return q.is_stale; }), last_valuations: valuations };
+  return bag.pricesPayload;
 }
 
 function actionCreateAsset_(d, ctx) {

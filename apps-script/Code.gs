@@ -2,67 +2,125 @@
  * PF Pro v0.1 — Web App entry points.
  * POST body (JSON): { token, request_id, action, actor?, client?, data }
  * Pipeline: token -> request_id idempotency -> lock -> validate -> write -> audit -> record result.
+ * Auth and parsing stay outside the lock. A missing script secret is auth_unavailable, not unauthorized.
  */
 function doPost(e) {
-  var body;
-  try { body = JSON.parse(e.postData.contents); } catch (err) { return json_({ ok: false, error: 'bad json' }); }
-  if (!body.token || body.token !== props_().getProperty('API_TOKEN')) return json_({ ok: false, error: 'unauthorized' });
-  if (!body.request_id) return json_({ ok: false, error: 'request_id required' });
-  var handler = ACTIONS[body.action];
-  if (!handler) return json_({ ok: false, error: 'unknown action' });
-
-  var payloadForHash = { action: body.action, data: body.data };
-  var hash = sha256_(stableJson_(payloadForHash));
-  var lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  var lock = null;
   try {
+    beginRequest_();
+    var raw = e && e.postData && e.postData.contents;
+    if (!raw) return json_({ ok: false, error: 'bad json' });
+    var body;
+    try { body = JSON.parse(raw); } catch (parseErr) { return json_({ ok: false, error: 'bad json' }); }
+    var params = requestParams_(e);
+    var auth = decideAuth_(body.token || params.token, scriptProp_('API_TOKEN'));
+    if (auth) return json_({ ok: false, error: auth });
+    if (!body.request_id) return json_({ ok: false, error: 'request_id required' });
+    var handler = ACTIONS[body.action];
+    if (!handler) return json_({ ok: false, error: 'unknown action' });
+
+    var hash = sha256_(stableJson_({ action: body.action, data: body.data }));
+    lock = LockService.getScriptLock();
+    try { lock.waitLock(20000); }
+    catch (lockErr) { return json_({ ok: false, error: 'busy' }); }
     var prior = idemCheck_(body.request_id, hash);
     if (prior && prior.conflict) return json_({ ok: false, error: 'V9: request_id reused with different payload' });
     if (prior && prior.replay) return json_({ ok: prior.status === 'ok', replay: true, status: prior.status, result_ref: prior.ref });
 
-    var ctx = { request_id: body.request_id, actor: body.actor || Session.getEffectiveUser().getEmail() || 'owner', client: body.client || 'web' };
+    var ctx = { request_id: body.request_id, actor: body.actor || safeActor_(), client: body.client || 'web' };
     try {
       var res = handler(body.data || {}, ctx);
-      if (body.action === 'add_transaction' || body.action === 'add_transfer' || body.action === 'void_transaction' || body.action === 'replace_transaction' || body.action === 'add_trade' || body.action === 'void_trade') {
+      if (needsCashflowRebuild_(body.action)) {
         var cfWarn = safeRebuildCashflows_();
         if (cfWarn) res.warnings = (res.warnings || []).concat([cfWarn]);
       }
       idemRecord_(body.request_id, body.action, hash, 'ok', (res.ids || []).join(','));
+      SpreadsheetApp.flush();
+      bumpCache_();
       return json_({ ok: true, result: res });
     } catch (err) {
       var status = err instanceof ValidationError ? 'rejected' : 'error';
-      idemRecord_(body.request_id, body.action, hash, status, String(err.message).slice(0, 200));
-      return json_({ ok: false, status: status, error: err.message });
+      try { idemRecord_(body.request_id, body.action, hash, status, String(err && err.message).slice(0, 200)); } catch (ignore) {}
+      try { SpreadsheetApp.flush(); bumpCache_(); } catch (ignore2) {}
+      return json_({ ok: false, status: status, error: err && err.message ? err.message : 'server' });
     }
-  } finally { lock.releaseLock(); }
+  } catch (outer) {
+    return json_({ ok: false, error: 'server' });
+  } finally {
+    if (lock) { try { lock.releaseLock(); } catch (ignore3) {} }
+  }
 }
 
 /**
  * Read-only endpoints.
- * GET ?token=..&q=health|accounts|balances|income_expense|incomeexpense|checks
+ * GET ?token=..&q=health|summary|accounts|balances|income_expense|incomeexpense|checks
  *     |transactions|trades|assets|prices|holdings|settings|performance|allocation
- * Phase 2 adds the reads the web client needs. `incomeexpense` is an alias of `income_expense`.
+ * `incomeexpense` is an alias of `income_expense`. `summary` is the 總覽 payload.
  */
 function doGet(e) {
-  var p = e.parameter || {};
-  if (p.token !== props_().getProperty('API_TOKEN')) return json_({ ok: false, error: 'unauthorized' });
-  switch (p.q) {
-    case 'health': return json_({ ok: true, schema_version: settings_().schema_version, at: nowIso_() });
-    case 'accounts': return json_({ ok: true, accounts: readTable_('Accounts').map(strip_) });
-    case 'balances': return json_(balancesPayload_());
-    case 'income_expense':
-    case 'incomeexpense': return json_({ ok: true, report: incomeExpense_(p.from, p.to) });
-    case 'checks': return json_({ ok: true, warnings: dailyChecks_() });
-    case 'transactions': return json_(transactionsPayload_(p.limit));
-    case 'trades': return json_(tradesPayload_(p.limit));
-    case 'assets': return json_({ ok: true, assets: readTable_('Assets').map(strip_) });
-    case 'prices': return json_(pricesPayload_());
-    case 'holdings': return json_(holdingsPayload_());
-    case 'performance': return json_(performancePayload_(p.period, p.benchmark));
-    case 'allocation': return json_(allocationPayload_());
-    case 'settings': return json_({ ok: true, settings: settings_() });
-    default: return json_({ ok: false, error: 'unknown q' });
+  try {
+    beginRequest_();
+    var p = requestParams_(e);
+    var auth = decideAuth_(p.token, scriptProp_('API_TOKEN'));
+    if (auth) return json_({ ok: false, error: auth });
+    if (p.q === 'health') return json_({ ok: true, schema_version: settings_().schema_version, at: nowIso_() });
+    var extra = [p.from || '', p.to || '', p.period || '', p.benchmark || '', p.limit || ''].join('|');
+    return json_(cachedGet_(String(p.q || '') + '|' + extra, function () { return routeGet_(p); }));
+  } catch (err) {
+    return json_({ ok: false, error: 'server' });
   }
+}
+
+function requestParams_(e) {
+  return mergeRequestParams_(e && e.parameter, e && e.parameters, e && e.queryString);
+}
+
+function routeGet_(p) {
+  switch (p.q) {
+    case 'summary': return summaryPayload_(p.from, p.to);
+    case 'accounts': return { ok: true, accounts: readTable_('Accounts').map(strip_) };
+    case 'balances': return balancesPayload_();
+    case 'income_expense':
+    case 'incomeexpense': return { ok: true, report: incomeExpense_(p.from, p.to) };
+    case 'checks': return { ok: true, warnings: dailyChecks_() };
+    case 'transactions': return transactionsPayload_(p.limit);
+    case 'trades': return tradesPayload_(p.limit);
+    case 'assets': return { ok: true, assets: readTable_('Assets').map(strip_) };
+    case 'prices': return pricesPayload_();
+    case 'holdings': return holdingsPayload_();
+    case 'performance': return performancePayload_(p.period, p.benchmark);
+    case 'allocation': return allocationPayload_();
+    case 'settings': return { ok: true, settings: settings_() };
+    default: return { ok: false, error: 'unknown q' };
+  }
+}
+
+function summaryPayload_(fromDate, toDate) {
+  var prices = pricesPayload_();
+  var balances = balancesPayload_();
+  return {
+    ok: true,
+    accounts: readTable_('Accounts').map(strip_),
+    balances: balances.balances,
+    net_worth: balances.net_worth,
+    report: incomeExpense_(fromDate, toDate),
+    warnings: dailyChecks_(),
+    quotes: prices.quotes,
+    stale: prices.stale,
+    last_valuations: prices.last_valuations,
+    holdings: computeHoldings_()
+  };
+}
+
+function needsCashflowRebuild_(action) {
+  return action === 'add_transaction' || action === 'add_transfer' || action === 'void_transaction' || action === 'replace_transaction' || action === 'add_trade' || action === 'void_trade';
+}
+
+function safeActor_() {
+  try {
+    var email = Session.getEffectiveUser().getEmail();
+    return email || 'owner';
+  } catch (err) { return 'owner'; }
 }
 
 var ACTIONS = {
@@ -83,11 +141,43 @@ var ACTIONS = {
     return { ids: [rec.account_id] };
   },
 
+  update_account: function (d, ctx) {
+    if (!d.account_id) fail_('V1', 'missing account_id');
+    var a = accountsById_()[d.account_id];
+    if (!a) fail_('V1', 'unknown account');
+    var patch = {};
+    if (d.name !== undefined) {
+      var name = String(d.name).trim();
+      if (!name) fail_('V1', 'bad name');
+      patch.name = name;
+    }
+    if (d.opening_date !== undefined && d.opening_date !== '') {
+      if (!isDate_(d.opening_date)) fail_('V1', 'bad opening_date');
+      patch.opening_date = d.opening_date;
+    }
+    if (d.opening_balance !== undefined && d.opening_balance !== '') {
+      if (isNaN(Number(d.opening_balance))) fail_('V1', 'bad opening_balance');
+      patch.opening_balance = Number(d.opening_balance);
+    }
+    if (d.active !== undefined && d.active !== '') {
+      var active = d.active === true || String(d.active).toUpperCase() === 'TRUE';
+      var inactive = d.active === false || String(d.active).toUpperCase() === 'FALSE';
+      if (!active && !inactive) fail_('V1', 'bad active');
+      patch.status = active ? 'active' : 'closed';
+    }
+    if (!Object.keys(patch).length) fail_('V1', 'nothing to update');
+    var before = strip_(a);
+    updateCells_('Accounts', a._row, patch);
+    audit_(ctx, 'config_change', 'Accounts', a.account_id, before, patch);
+    return { ids: [a.account_id] };
+  },
+
   close_account: function (d, ctx) {
     var a = readTable_('Accounts').filter(function (x) { return x.account_id === d.account_id; })[0];
     if (!a) fail_('V1', 'unknown account');
+    var beforeClose = strip_(a);
     updateCells_('Accounts', a._row, { status: 'closed' });
-    audit_(ctx, 'config_change', 'Accounts', a.account_id, strip_(a), { status: 'closed' });
+    audit_(ctx, 'config_change', 'Accounts', a.account_id, beforeClose, { status: 'closed' });
     return { ids: [a.account_id] };
   },
 
@@ -121,7 +211,8 @@ var ACTIONS = {
       warn = warn.concat(validateTxn_(f, accounts));
       recs.push(txnRecord_(f, ctx));
     }
-    recs.forEach(function (r) { appendRecord_('Transactions', r); audit_(ctx, 'create', 'Transactions', r.txn_id, null, r); });
+    appendRecords_('Transactions', recs);
+    recs.forEach(function (r) { audit_(ctx, 'create', 'Transactions', r.txn_id, null, r); });
     return { ids: recs.map(function (r) { return r.txn_id; }), transfer_group_id: gid, warnings: warn };
   },
 
@@ -183,7 +274,11 @@ var ACTIONS = {
 
   set_setting: function (d, ctx) {
     var rows = readTable_('Settings'), r = rows.filter(function (x) { return x.key === d.key; })[0];
-    if (r) { updateCells_('Settings', r._row, { value: d.value }); audit_(ctx, 'config_change', 'Settings', d.key, { value: r.value }, { value: d.value }); }
+    if (r) {
+      var previous = r.value;
+      updateCells_('Settings', r._row, { value: d.value });
+      audit_(ctx, 'config_change', 'Settings', d.key, { value: previous }, { value: d.value });
+    }
     else { appendRecord_('Settings', { key: d.key, value: d.value, note: d.note || '' }); audit_(ctx, 'config_change', 'Settings', d.key, null, { value: d.value }); }
     return { ids: [d.key] };
   },
@@ -192,7 +287,12 @@ var ACTIONS = {
   add_trade: function (d, ctx) { return actionAddTrade_(d, ctx); },
   void_trade: function (d, ctx) { return actionVoidTrade_(d, ctx); },
   add_price: function (d, ctx) { return actionAddPrice_(d, ctx); },
-  refresh_benchmarks: function () { return fetchBenchmarks(); }
+  refresh_benchmarks: function () { return fetchBenchmarksBody_(); },
+  run_snapshot: function () {
+    if (fxNeedsFetch_(fxDate_('USDTWD'), today_())) fetchBotFxBody_();
+    var created = writeSnapshot_();
+    return { ids: [today_()], created: created !== false };
+  }
 };
 
 function txnRecord_(d, ctx) {

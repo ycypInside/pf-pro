@@ -7,6 +7,7 @@ import {
   buildTransfer,
   daysBetween,
   explainError,
+  shouldRetryGet,
   isStale,
   netWorth,
   nextRequest,
@@ -200,8 +201,18 @@ test('categories keep the sign the report stores', () => {
 
 test('errors stay in Traditional Chinese without leaking a token', () => {
   assert.match(explainError('unauthorized'), /權杖/);
+  assert.match(explainError('auth_unavailable'), /不是密碼錯誤/);
+  assert.match(explainError('not_found'), /連不上/);
+  assert.match(explainError('busy'), /寫入/);
   assert.match(explainError('unknown action'), /部署/);
   assert.match(explainError('offline'), /沒有網路/);
   assert.match(explainError('連線失敗'), /重試/);
+  const transient = Object.assign(new Error('not_found'), { transient: true });
+  const offline = Object.assign(new Error('offline'), { offline: true, transient: true });
+  const denied = Object.assign(new Error('unauthorized'), { transient: false });
+  assert.equal(shouldRetryGet(transient, 0, 3), true);
+  assert.equal(shouldRetryGet(transient, 2, 3), false);
+  assert.equal(shouldRetryGet(offline, 0, 3), false);
+  assert.equal(shouldRetryGet(denied, 0, 3), false);
   assert.equal(stableString({ b: 1, a: { d: 2, c: 3 } }), '{"a":{"c":3,"d":2},"b":1}');
 });
