@@ -112,18 +112,30 @@ const gets = {
 };
 
 let posts = [];
+let postBodies = [];
 
 test.beforeEach(async ({ page }) => {
   posts = [];
+  postBodies = [];
   await page.route('https://example.com/**', async (route) => {
     const request = route.request();
     if (request.method() === 'POST') {
+      const raw = request.postData() || '{}';
       posts.push(request.url());
+      postBodies.push(raw);
       let action = '';
       try {
-        action = JSON.parse(request.postData() || '{}').action || '';
+        action = JSON.parse(raw).action || '';
       } catch {
         action = '';
+      }
+      if (action === 'add_transaction' && posts.length === 1) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ ok: false, error: 'parse_error', reason: 'lost_body' }),
+        });
+        return;
       }
       const result = action === 'add_transaction' ? { ids: ['TX9'] } : { ids: [] };
       await route.fulfill({
@@ -193,9 +205,15 @@ test('記帳 posts the token on the query string', async ({ page }) => {
   await page.locator('input[name="amount"]:visible').fill('186');
   await page.getByRole('button', { name: '入帳' }).click();
   await expect(page.getByText('已寫入')).toBeVisible();
-  expect(posts.length).toBeGreaterThan(0);
-  const posted = new URL(posts[0]);
-  expect(posted.searchParams.get('token')).toBe(token);
+  expect(posts.length).toBe(2);
+  for (const href of posts) {
+    const posted = new URL(href);
+    expect(posted.searchParams.get('token')).toBe(token);
+    expect(posted.searchParams.get('m')).toBe('post');
+  }
+  const ids = postBodies.map((raw) => JSON.parse(raw).request_id);
+  expect(ids[0]).toBeTruthy();
+  expect(ids[1]).toBe(ids[0]);
   await fits(page, '記帳');
 });
 

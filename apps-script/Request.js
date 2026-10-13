@@ -63,6 +63,18 @@ function decideAuth_(presented, stored) {
 }
 
 /**
+ * A 302 turns the POST into a GET and drops the body. The query still has the
+ * token, and either no q or the m=post marker the client adds to POST URLs.
+ */
+function lostPostBody_(params) {
+  var token = params && params.token != null ? String(params.token).trim() : '';
+  if (!token) return false;
+  if (String(params.m || '') === 'post') return true;
+  var q = params.q == null ? '' : String(params.q).trim();
+  return !q;
+}
+
+/**
  * Body token wins when it has text. A blank or whitespace body token is missing,
  * so the query token is used. A 302 can drop the POST body and leave only the query.
  */

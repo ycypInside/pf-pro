@@ -1,4 +1,4 @@
-import { isTransientError, shouldRetryGet, shouldRetryPost, validateEndpoint, withQueryToken } from './money.js';
+import { isTransientError, shouldRetryGet, shouldRetryPost, validateEndpoint, withPostQuery } from './money.js';
 
 const URL_KEY = 'pfpro.apiUrl';
 const TOKEN_KEY = 'pfpro.token';
@@ -127,12 +127,12 @@ export async function apiGet(q, params = {}, config) {
 /**
  * Apps Script web apps reject CORS preflight. text/plain is a simple request.
  * The deployment 302s to googleusercontent. Fetch turns that POST into a GET and
- * drops the body, so the token is also on the query string. If the first answer
- * is still a missing token or a lost body, retry the same request_id once.
+ * drops the body, so the token and m=post stay on the query string. A lost body,
+ * parse error, or missing token is retried twice on the same request_id.
  */
 export async function apiPost(action, data, requestId, config) {
   const { apiUrl, token } = endpoint(config);
-  const url = withQueryToken(apiUrl, token);
+  const url = withPostQuery(apiUrl, token);
   const body = JSON.stringify({
     token,
     request_id: requestId,
@@ -140,9 +140,10 @@ export async function apiPost(action, data, requestId, config) {
     client: 'web',
     data,
   });
+  const waits = [0, 300, 800];
   let last;
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    if (attempt) await sleep(350);
+  for (let attempt = 0; attempt < waits.length; attempt += 1) {
+    if (waits[attempt]) await sleep(waits[attempt]);
     last = await apiPostOnce(url, body);
     if (!shouldRetryPost(last, attempt)) return last;
   }
