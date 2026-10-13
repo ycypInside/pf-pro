@@ -7,8 +7,10 @@ import {
   buildTransfer,
   daysBetween,
   explainError,
+  benchmarkChunkOpen,
   shouldRetryGet,
   shouldRetryPost,
+  withQueryToken,
   isStale,
   netWorth,
   nextRequest,
@@ -223,6 +225,16 @@ test('errors stay in Traditional Chinese without leaking a token', () => {
   assert.equal(shouldRetryPost({ ok: false, error: 'unauthorized' }, 0), true);
   assert.equal(shouldRetryPost({ ok: false, error: 'unknown q' }, 0), true);
   assert.equal(shouldRetryPost({ ok: false, error: 'busy' }, 0), false);
+  assert.equal(benchmarkChunkOpen({ ok: true, done: false, result: { done: true } }), true);
+  assert.equal(benchmarkChunkOpen({ ok: true, done: true, result: { done: false } }), true);
+  assert.equal(benchmarkChunkOpen({ ok: true, result: { done: true } }), false);
+  assert.equal(benchmarkChunkOpen({ ok: true, done: true, result: {} }), false);
+  const base = 'https://example.com/macros/s/DEPLOY/exec';
+  const plain = withQueryToken(base, 'secret-token');
+  assert.equal(new URL(plain).searchParams.get('token'), 'secret-token');
+  const spaced = withQueryToken(`${base}?q=ignored`, 'a b/c');
+  assert.equal(new URL(spaced).searchParams.get('token'), 'a b/c');
+  assert.ok(spaced.includes('token='));
   assert.match(explainError('unauthorized', 'missing_token'), /沒有帶到權杖/);
   assert.match(explainError('unauthorized', 'mismatch'), /不一致/);
   assert.match(explainError('bad json', 'parse_error'), /轉址/);
