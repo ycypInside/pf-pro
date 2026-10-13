@@ -1,0 +1,10 @@
+{
+  "name": "pf-pro",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test web/js/money.test.js web/js/format.test.js",
+    "check": "node web/scripts/check-static.js",
+    "build": "npm test && npm run check"
+  }
+}
