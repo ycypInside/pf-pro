@@ -396,11 +396,30 @@ export function shouldRetryGet(error, attempt, limit = 3) {
   return error.transient === true;
 }
 
-export function explainError(message) {
+/**
+ * One automatic POST retry. A dropped body or a redirected GET comes back as
+ * missing_token, parse_error, bad json, or unknown q. A real mismatch is not retried.
+ * Legacy servers omit reason and only say unauthorized.
+ */
+export function shouldRetryPost(payload, attempt) {
+  if (attempt >= 1) return false;
+  if (!payload || payload.ok) return false;
+  const reason = String(payload.reason || '');
+  if (reason === 'mismatch' || reason === 'missing_secret') return false;
+  if (reason === 'missing_token' || reason === 'parse_error') return true;
+  if (reason) return false;
+  const error = String(payload.error || '');
+  return error === 'unauthorized' || error === 'bad json' || error === 'unknown q';
+}
+
+export function explainError(message, reason) {
   const text = String(message || '').trim();
+  const why = String(reason || '').trim();
   if (!text) return '發生錯誤';
   if (text === 'offline') return '目前沒有網路。恢復連線後再試。';
   if (text === '連線失敗') return '連線失敗。請檢查網路後重試。';
+  if (text === 'unauthorized' && why === 'missing_token') return '這次送出沒有帶到權杖。已自動重試一次。';
+  if (text === 'unauthorized' && why === 'mismatch') return '權杖與帳簿不一致。請到設定核對權杖。';
   if (text === 'unauthorized') return '權杖不正確，連線被拒絕。';
   if (text === 'auth_unavailable') return '暫時讀不到權杖。這不是密碼錯誤，請再試一次。';
   if (text === 'busy') return '帳簿正在寫入，請稍後再試。';
@@ -408,6 +427,7 @@ export function explainError(message) {
   if (text === 'not_found') return '帳簿暫時連不上。請再試一次。';
   if (text === 'unknown action') return '後端還沒有這個動作。請重新部署 Apps Script 後再試。';
   if (text === 'unknown q') return '後端還沒有這個查詢。請重新部署 Apps Script 後再試。';
+  if (text === 'bad json' && why === 'parse_error') return '送出的內容在轉址時遺失。已自動重試一次。';
   if (text === 'bad json') return '送出的內容不是合法的 JSON。';
   if (text === 'request_id required') return '缺少 request_id。';
   return text;

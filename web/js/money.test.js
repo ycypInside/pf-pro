@@ -8,6 +8,7 @@ import {
   daysBetween,
   explainError,
   shouldRetryGet,
+  shouldRetryPost,
   isStale,
   netWorth,
   nextRequest,
@@ -215,4 +216,14 @@ test('errors stay in Traditional Chinese without leaking a token', () => {
   assert.equal(shouldRetryGet(offline, 0, 3), false);
   assert.equal(shouldRetryGet(denied, 0, 3), false);
   assert.equal(stableString({ b: 1, a: { d: 2, c: 3 } }), '{"a":{"c":3,"d":2},"b":1}');
+  assert.equal(shouldRetryPost({ ok: false, error: 'unauthorized', reason: 'missing_token' }, 0), true);
+  assert.equal(shouldRetryPost({ ok: false, error: 'bad json', reason: 'parse_error' }, 0), true);
+  assert.equal(shouldRetryPost({ ok: false, error: 'unauthorized', reason: 'missing_token' }, 1), false);
+  assert.equal(shouldRetryPost({ ok: false, error: 'unauthorized', reason: 'mismatch' }, 0), false);
+  assert.equal(shouldRetryPost({ ok: false, error: 'unauthorized' }, 0), true);
+  assert.equal(shouldRetryPost({ ok: false, error: 'unknown q' }, 0), true);
+  assert.equal(shouldRetryPost({ ok: false, error: 'busy' }, 0), false);
+  assert.match(explainError('unauthorized', 'missing_token'), /沒有帶到權杖/);
+  assert.match(explainError('unauthorized', 'mismatch'), /不一致/);
+  assert.match(explainError('bad json', 'parse_error'), /轉址/);
 });

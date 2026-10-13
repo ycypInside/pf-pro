@@ -56,7 +56,7 @@ export function outcomeView(outcome, onRetry) {
   if (res.replay && !res.ok) {
     return h('div', { class: 'banner dup', role: 'status' },
       h('strong', {}, '重複送出'),
-      h('p', {}, `同一個 request 先前已被拒絕，沒有再寫一次。${explainError(res.error || '')}`),
+      h('p', {}, `同一個 request 先前已被拒絕，沒有再寫一次。${explainError(res.error || '', res.reason)}`),
       idLine);
   }
   if (res.ok) {
@@ -70,6 +70,6 @@ export function outcomeView(outcome, onRetry) {
   }
   return h('div', { class: 'banner err', role: 'alert' },
     h('strong', {}, '未寫入'),
-    h('p', {}, explainError(res.error || '失敗')),
+    h('p', {}, explainError(res.error || '失敗', res.reason)),
     idLine);
 }

@@ -13,12 +13,22 @@ function props_() {
   return bag.props;
 }
 
+/**
+ * Warm isolates keep the API token here. beginRequest_ clears sheet memos only,
+ * so a Properties blip cannot forget a token this process already read.
+ */
+var API_TOKEN_MEMO_ = '';
+
 /** Script Properties can return blank under concurrent reads. Cache a non-empty value and retry once. */
 function scriptProp_(key) {
+  if (key === 'API_TOKEN' && API_TOKEN_MEMO_) return API_TOKEN_MEMO_;
   var cacheKey = 'pf:prop:' + key;
   try {
     var hit = CacheService.getScriptCache().get(cacheKey);
-    if (hit) return hit;
+    if (hit) {
+      if (key === 'API_TOKEN') API_TOKEN_MEMO_ = hit;
+      return hit;
+    }
   } catch (err) { /* cache miss */ }
   var value = '';
   try { value = props_().getProperty(key) || ''; } catch (err2) { value = ''; }
@@ -27,6 +37,7 @@ function scriptProp_(key) {
     try { value = props_().getProperty(key) || ''; } catch (err3) { value = ''; }
   }
   if (value) {
+    if (key === 'API_TOKEN') API_TOKEN_MEMO_ = value;
     try { CacheService.getScriptCache().put(cacheKey, value, 21600); } catch (err4) { /* still return the value */ }
   }
   return value;
@@ -61,6 +72,7 @@ function settings_() {
 function setApiToken(token) {
   if (!token || String(token).length < 32) throw new Error('token too short');
   props_().setProperty('API_TOKEN', String(token));
+  API_TOKEN_MEMO_ = String(token);
   try {
     CacheService.getScriptCache().put('pf:prop:API_TOKEN', String(token), 21600);
   } catch (err) { /* the next read will load it from properties */ }

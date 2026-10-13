@@ -101,11 +101,26 @@ export async function renderPerformance(main, ctx) {
       type: 'button',
       class: 'btn',
       onClick: async () => {
-        const outcome = await poster.send({});
-        if (!ctx.alive()) return;
-        const added = outcome.res && outcome.res.ok && outcome.res.result ? outcome.res.result.added : null;
-        if (outcome.res && outcome.res.ok) {
-          flash = `指標已更新，新增 ${added || 0} 筆。`;
+        status.replaceChildren(h('p', { class: 'muted' }, '正在補指標…'));
+        let added = 0;
+        let outcome = null;
+        let guard = 0;
+        while (guard < 40) {
+          outcome = await poster.send({});
+          if (!ctx.alive()) return;
+          if (!outcome.res || !outcome.res.ok) break;
+          const chunk = outcome.res.result || {};
+          added += Number(chunk.added) || 0;
+          const label = chunk.symbol ? `正在補 ${chunk.symbol}` : '正在補指標';
+          status.replaceChildren(h('p', { class: 'muted' }, chunk.done === false ? `${label}…` : '指標已更新'));
+          if (chunk.done !== false) break;
+          guard += 1;
+        }
+        if (outcome && outcome.res && outcome.res.ok) {
+          const unfinished = outcome.res.result && outcome.res.result.done === false;
+          flash = unfinished
+            ? `指標還在補，這次新增 ${added} 筆。再按一次會接下去。`
+            : `指標已更新，新增 ${added} 筆。`;
           ctx.reload();
           return;
         }

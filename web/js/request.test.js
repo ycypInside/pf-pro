@@ -12,13 +12,18 @@ runInContext(readFileSync(path.join(root, 'apps-script/Request.js'), 'utf8'), co
 
 const { decideAuth_, mergeRequestParams_, fxNeedsFetch_ } = context;
 
-test('a blank script secret is not reported as a wrong token', () => {
-  assert.equal(decideAuth_('client-token', ''), 'auth_unavailable');
-  assert.equal(decideAuth_('client-token', null), 'auth_unavailable');
-  assert.equal(decideAuth_('client-token', '   '), 'auth_unavailable');
-  assert.equal(decideAuth_('nope', 'secret-token'), 'unauthorized');
-  assert.equal(decideAuth_('', 'secret-token'), 'unauthorized');
-  assert.equal(decideAuth_('  secret-token  ', 'secret-token'), '');
+function authReason(presented, stored) {
+  const result = decideAuth_(presented, stored);
+  return result ? `${result.error}|${result.reason}` : '';
+}
+
+test('auth reports why a token was rejected', () => {
+  assert.equal(authReason('client-token', ''), 'auth_unavailable|missing_secret');
+  assert.equal(authReason('client-token', null), 'auth_unavailable|missing_secret');
+  assert.equal(authReason('client-token', '   '), 'auth_unavailable|missing_secret');
+  assert.equal(authReason('', 'secret-token'), 'unauthorized|missing_token');
+  assert.equal(authReason('nope', 'secret-token'), 'unauthorized|mismatch');
+  assert.equal(decideAuth_('  secret-token  ', 'secret-token'), null);
 });
 
 test('GET params keep a token when the redirect duplicates the query', () => {

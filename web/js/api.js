@@ -1,4 +1,4 @@
-import { isTransientError, shouldRetryGet, validateEndpoint } from './money.js';
+import { isTransientError, shouldRetryGet, shouldRetryPost, validateEndpoint } from './money.js';
 
 const URL_KEY = 'pfpro.apiUrl';
 const TOKEN_KEY = 'pfpro.token';
@@ -126,10 +126,14 @@ export async function apiGet(q, params = {}, config) {
 
 /**
  * Apps Script web apps reject CORS preflight. text/plain is a simple request.
- * The deployment answers with a redirect; follow is the fetch default and keeps the body path working.
+ * The deployment 302s to googleusercontent. Fetch turns that POST into a GET and
+ * drops the body, so the token is also on the query string. If the first answer
+ * is still a missing token or a lost body, retry the same request_id once.
  */
 export async function apiPost(action, data, requestId, config) {
   const { apiUrl, token } = endpoint(config);
+  const url = new URL(apiUrl);
+  url.searchParams.set('token', token);
   const body = JSON.stringify({
     token,
     request_id: requestId,
@@ -137,10 +141,20 @@ export async function apiPost(action, data, requestId, config) {
     client: 'web',
     data,
   });
+  let last;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (attempt) await sleep(350);
+    last = await apiPostOnce(url.toString(), body);
+    if (!shouldRetryPost(last, attempt)) return last;
+  }
+  return last;
+}
+
+async function apiPostOnce(url, body) {
   throwIfOffline();
   let res;
   try {
-    res = await fetch(apiUrl, {
+    res = await fetch(url, {
       method: 'POST',
       redirect: 'follow',
       referrerPolicy: 'no-referrer',
