@@ -535,15 +535,17 @@ function rebuildCashflows_() {
       source_txn_id: t.txn_id
     });
   });
-  var sh = sheet_('Cashflows');
-  var last = sh.getLastRow();
-  if (last > 1) sh.deleteRows(2, last - 1);
-  rows.forEach(function (r) { appendRecord_('Cashflows', r); });
+  replaceBody_('Cashflows', rows);
   return rows.length;
 }
 
 /** Append public index levels. Existing benchmark_id + date rows are left as they are. */
 function fetchBenchmarks() {
+  beginRequest_();
+  return fetchBenchmarksBody_();
+}
+
+function fetchBenchmarksBody_() {
   var added = 0;
   var warnings = [];
   benchmarkSymbols_().forEach(function (symbol) {
@@ -627,13 +629,14 @@ function appendBenchmarkRows_(symbol, rows) {
   readTable_('Benchmarks').forEach(function (row) {
     if (row.benchmark_id === symbol) have[fmtDate_(row.date)] = true;
   });
-  var added = 0;
+  var added = [];
   var currency = '';
+  var fetchedAt = nowIso_();
   rows.forEach(function (row) {
     if (!row.date || have[row.date]) return;
     have[row.date] = true;
     if (!currency && row.currency) currency = row.currency;
-    appendRecord_('Benchmarks', {
+    added.push({
       benchmark_id: symbol,
       date: row.date,
       index_value: row.value,
@@ -641,9 +644,9 @@ function appendBenchmarkRows_(symbol, rows) {
       total_return: row.total_return ? true : false,
       daily_return: '',
       source: row.source || 'yahoo',
-      fetched_at: nowIso_()
+      fetched_at: fetchedAt
     });
-    added++;
   });
-  return added;
+  if (added.length) appendRecords_('Benchmarks', added);
+  return added.length;
 }

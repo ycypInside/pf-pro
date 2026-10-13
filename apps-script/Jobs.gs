@@ -3,15 +3,23 @@ function installTriggers() {
   ScriptApp.getProjectTriggers().forEach(function (t) { ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger('dailySnapshot').timeBased().atHour(23).everyDays(1).inTimezone(CONFIG.TZ).create();
   ScriptApp.newTrigger('fetchBenchmarks').timeBased().atHour(22).everyDays(1).inTimezone(CONFIG.TZ).create();
+  // BOT publishes the board in the afternoon. nearMinute(30) aims at 16:30 Taipei, within a quarter hour.
+  ScriptApp.newTrigger('fetchBotFx').timeBased().everyDays(1).atHour(16).nearMinute(30).inTimezone(CONFIG.TZ).create();
   ScriptApp.newTrigger('purgeIdempotency').timeBased().atHour(3).everyDays(1).inTimezone(CONFIG.TZ).create();
   ScriptApp.newTrigger('weeklyBackup').timeBased().onWeekDay(ScriptApp.WeekDay.SUNDAY).atHour(4).inTimezone(CONFIG.TZ).create();
 }
 
 /** Phase-1 basic snapshot (spec 3.9). Never overwrites an existing date; V11 + V13. */
 function dailySnapshot() {
+  beginRequest_();
+  if (fxNeedsFetch_(fxDate_('USDTWD'), today_())) fetchBotFxBody_();
+  return writeSnapshot_();
+}
+
+function writeSnapshot_() {
   var date = today_();
   var existing = readTable_('Snapshots').some(function (s) { return fmtDate_(s.snapshot_date) === date; });
-  if (existing) return;
+  if (existing) return false;
   var accounts = accountsById_(), fx = latestFx_('USDTWD');
   var assets = 0, liabs = 0, cash = 0, inv = 0;
   Object.keys(accounts).forEach(function (id) {
@@ -49,15 +57,30 @@ function dailySnapshot() {
   });
   var w = dailyChecks_();
   if (w.length) audit_({ actor: 'system', request_id: 'job-' + date, client: 'script' }, 'config_change', 'Snapshots', date, null, { warnings: w });
+  return true;
 }
 
 /** Latest fx (Bank of Taiwan spot mid) from Prices_FX; append-only table, newest date wins. */
-function latestFx_(pair) {
-  var best = null;
+function latestFxMap_() {
+  var bag = req_();
+  if (bag.fx) return bag.fx;
+  var best = {};
   readTable_('Prices_FX').forEach(function (p) {
-    if (p.symbol === pair && p.kind === 'fx' && (!best || fmtDate_(p.date) > fmtDate_(best.date))) best = p;
+    if (p.kind !== 'fx' || !p.symbol) return;
+    var date = fmtDate_(p.date);
+    var prev = best[p.symbol];
+    if (!prev || date > prev.date) best[p.symbol] = { date: date, value: Number(p.value) };
   });
-  return best ? Number(best.value) : null;
+  bag.fx = best;
+  return best;
+}
+function latestFx_(pair) {
+  var row = latestFxMap_()[pair];
+  return row ? row.value : null;
+}
+function fxDate_(pair) {
+  var row = latestFxMap_()[pair];
+  return row ? row.date : '';
 }
 
 /**
@@ -66,22 +89,41 @@ function latestFx_(pair) {
  * Verify column positions against the live CSV before enabling a trigger.
  */
 function fetchBotFx() {
+  beginRequest_();
+  return fetchBotFxBody_();
+}
+
+function fetchBotFxBody_() {
   var url = 'https://rate.bot.com.tw/xrt/flcsv/0/day';
   var date = today_();
+  var added = [];
   try {
-    var csv = Utilities.parseCsv(UrlFetchApp.fetch(url).getContentText('UTF-8'));
-    var have = readTable_('Prices_FX');
+    var res = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    if (res.getResponseCode() !== 200) throw new Error('HTTP ' + res.getResponseCode());
+    var csv = Utilities.parseCsv(res.getContentText('UTF-8'));
+    var have = {};
+    readTable_('Prices_FX').forEach(function (p) {
+      if (p.source === 'bank' && fmtDate_(p.date) === date) have[p.symbol] = true;
+    });
     csv.slice(1).forEach(function (r) {
       var ccy = String(r[0]).trim();
       if (['USD', 'JPY', 'EUR', 'CNY', 'HKD', 'AUD', 'GBP'].indexOf(ccy) < 0) return;
       var spotBuy = Number(r[3]), spotSell = Number(r[13]);
       if (!(spotBuy > 0 && spotSell > 0)) return;
       var sym = ccy + 'TWD';
-      if (have.some(function (p) { return p.symbol === sym && fmtDate_(p.date) === date && p.source === 'bank'; })) return;
-      var rec = { symbol: sym, kind: 'fx', date: date, value: Math.round((spotBuy + spotSell) / 2 * 10000) / 10000, currency: 'TWD',
-        source: 'bank', fetched_at: nowIso_(), is_stale: false, note: 'BOT spot mid' };
-      appendRecord_('Prices_FX', rec);
-      audit_({ actor: 'system', request_id: 'fx-' + date, client: 'script' }, 'price_import', 'Prices_FX', sym + '@' + date, null, rec);
+      if (have[sym]) return;
+      have[sym] = true;
+      added.push({
+        symbol: sym, kind: 'fx', date: date, value: Math.round((spotBuy + spotSell) / 2 * 10000) / 10000, currency: 'TWD',
+        source: 'bank', fetched_at: nowIso_(), is_stale: false, note: 'BOT spot mid'
+      });
     });
+    if (added.length) {
+      appendRecords_('Prices_FX', added);
+      auditRows_({ actor: 'system', request_id: 'fx-' + date, client: 'script' }, 'price_import', 'Prices_FX', added.map(function (rec) {
+        return { id: rec.symbol + '@' + date, before: null, after: rec };
+      }));
+    }
   } catch (err) { Logger.log('fx fetch failed, keeping last value: ' + err); }
+  return added.length;
 }

@@ -42,7 +42,7 @@ export function outcomeView(outcome, onRetry) {
       h('strong', {}, offline ? '沒有網路' : '連線失敗'),
       h('p', {}, offline
         ? '目前沒有網路。恢復後重試會沿用同一個 request_id，避免重複入帳。'
-        : '沒有收到回應。重試會沿用同一個 request_id，避免重複入帳。'),
+        : `${explainError((outcome.error && outcome.error.message) || '連線失敗')} 重試會沿用同一個 request_id，避免重複入帳。`),
       idLine,
       retry);
   }

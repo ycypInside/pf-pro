@@ -3,9 +3,23 @@ function ValidationError(code, msg) { this.code = code; this.message = code + ':
 function fail_(code, msg) { throw new ValidationError(code, msg); }
 
 function accountsById_() {
+  var bag = req_();
+  if (bag.accounts) return bag.accounts;
   var m = {};
   readTable_('Accounts').forEach(function (a) { m[a.account_id] = a; });
+  bag.accounts = m;
   return m;
+}
+
+function balanceSums_() {
+  var bag = req_();
+  if (bag.balanceSums) return bag.balanceSums;
+  var sums = {};
+  readTable_('Transactions').forEach(function (t) {
+    if (t.status === 'active') sums[t.account_id] = (sums[t.account_id] || 0) + Number(t.amount);
+  });
+  bag.balanceSums = sums;
+  return sums;
 }
 
 var TXN_REQUIRED = ['date', 'account_id', 'txn_type', 'category', 'amount', 'currency', 'fx_rate', 'fx_source', 'flow_class'];
@@ -57,11 +71,8 @@ function validatePair_(a, b) {
 
 /** V6 helper: opening_balance + sum(active amounts). */
 function balanceOf_(accountId, accounts) {
-  var acc = accounts[accountId], bal = Number(acc.opening_balance || 0);
-  readTable_('Transactions').forEach(function (t) {
-    if (t.account_id === accountId && t.status === 'active') bal += Number(t.amount);
-  });
-  return round2_(bal);
+  var acc = accounts[accountId];
+  return round2_(Number(acc.opening_balance || 0) + (balanceSums_()[accountId] || 0));
 }
 
 /** Daily checks V3, V4, V6(vs reconciliation inputs), V7. Returns warnings. */

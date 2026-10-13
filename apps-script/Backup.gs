@@ -1,5 +1,6 @@
 /** Backups: weekly Drive copy of the whole spreadsheet; restore test verifies headers + row counts. */
 function weeklyBackup() {
+  beginRequest_();
   var src = DriveApp.getFileById(ssId_());
   var folderId = props_().getProperty('BACKUP_FOLDER_ID');
   var name = 'PF Pro backup ' + nowIso_().slice(0, 16);

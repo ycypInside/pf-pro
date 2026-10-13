@@ -7,20 +7,53 @@ var CONFIG = {
   TZ: 'Asia/Taipei',
   CLIENT_DEFAULT: 'web'
 };
-function props_() { return PropertiesService.getScriptProperties(); }
-function ss_() {
-  var id = props_().getProperty('SPREADSHEET_ID');
-  return id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActive(); // bound-script fallback
+function props_() {
+  var bag = req_();
+  if (!bag.props) bag.props = PropertiesService.getScriptProperties();
+  return bag.props;
 }
-function ssId_() { return props_().getProperty('SPREADSHEET_ID') || SpreadsheetApp.getActive().getId(); }
+
+/** Script Properties can return blank under concurrent reads. Cache a non-empty value and retry once. */
+function scriptProp_(key) {
+  var cacheKey = 'pf:prop:' + key;
+  try {
+    var hit = CacheService.getScriptCache().get(cacheKey);
+    if (hit) return hit;
+  } catch (err) { /* cache miss */ }
+  var value = '';
+  try { value = props_().getProperty(key) || ''; } catch (err2) { value = ''; }
+  if (!value) {
+    Utilities.sleep(120);
+    try { value = props_().getProperty(key) || ''; } catch (err3) { value = ''; }
+  }
+  if (value) {
+    try { CacheService.getScriptCache().put(cacheKey, value, 21600); } catch (err4) { /* still return the value */ }
+  }
+  return value;
+}
+
+function ss_() {
+  var bag = req_();
+  if (bag.ss) return bag.ss;
+  var id = scriptProp_('SPREADSHEET_ID');
+  bag.ss = id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActive();
+  return bag.ss;
+}
+function ssId_() { return scriptProp_('SPREADSHEET_ID') || SpreadsheetApp.getActive().getId(); }
 function sheet_(name) {
+  var bag = req_();
+  if (bag.sheets[name]) return bag.sheets[name];
   var sh = ss_().getSheetByName(name);
   if (!sh) throw new Error('missing sheet ' + name);
+  bag.sheets[name] = sh;
   return sh;
 }
 function settings_() {
-  var rows = sheet_('Settings').getDataRange().getValues(), out = {};
-  for (var i = 1; i < rows.length; i++) if (rows[i][0]) out[rows[i][0]] = rows[i][1];
+  var bag = req_();
+  if (bag.settings) return bag.settings;
+  var out = {};
+  readTable_('Settings').forEach(function (row) { if (row.key) out[row.key] = row.value; });
+  bag.settings = out;
   return out;
 }
 
@@ -28,6 +61,9 @@ function settings_() {
 function setApiToken(token) {
   if (!token || String(token).length < 32) throw new Error('token too short');
   props_().setProperty('API_TOKEN', String(token));
+  try {
+    CacheService.getScriptCache().put('pf:prop:API_TOKEN', String(token), 21600);
+  } catch (err) { /* the next read will load it from properties */ }
   if (!props_().getProperty('SPREADSHEET_ID')) props_().setProperty('SPREADSHEET_ID', SpreadsheetApp.getActive().getId());
   return 'API_TOKEN set (' + String(token).length + ' chars)';
 }
