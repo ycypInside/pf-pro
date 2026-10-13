@@ -465,7 +465,7 @@ function voidTradeRow_(tradeId, reason, ctx, at) {
 }
 
 function actionVoidTrade_(d, ctx) {
-  if (!d.void_reason) fail_('V10', 'void_reason required');
+  if (!ckVoidReasonOk_(d.void_reason)) fail_('V10', 'void_reason required');
   var rows = readTable_('Investment_Trades');
   var target = rows.filter(function (r) { return r.trade_id === d.trade_id; })[0];
   if (!target) fail_('V10', 'unknown trade');

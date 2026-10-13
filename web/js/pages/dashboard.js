@@ -1,8 +1,9 @@
 import { hasConfig, tryGet } from '../api.js';
-import { h } from '../dom.js';
+import { h, mount } from '../dom.js';
 import { formatMoney, formatQty, formatRate, formatTwd } from '../format.js';
 import { ACCOUNT_TYPE, kindLabel } from '../labels.js';
 import { explainError, netWorth, splitCategories, taipeiMonth, withTwd } from '../money.js';
+import { entryQuery, readTemplates } from '../prefs.js';
 
 export async function renderDashboard(main, ctx) {
   if (!hasConfig()) {
@@ -41,24 +42,43 @@ export async function renderDashboard(main, ctx) {
     : netWorth({ balances, holdings });
   const report = incomeR.ok ? incomeR.data.report : null;
   const categories = report ? splitCategories(report.by_category) : { income: [], expense: [] };
+  const known = new Set(accounts.map((account) => account.account_id));
+  const templates = readTemplates(localStorage).filter((item) => !item.account_id || known.has(item.account_id));
 
-  main.append(
+  mount(main,
     h('section', { class: 'hero' },
       h('div', { class: 'hero-top' },
         h('p', { class: 'eyebrow' }, '淨資產 · 台幣'),
-        h('button', { type: 'button', class: 'text-btn', onClick: () => ctx.go('overview') }, '重新整理')),
+        h('button', { type: 'button', class: 'text-btn', onClick: () => ctx.reload() }, '重新整理')),
       h('p', { class: 'net num' }, formatTwd(summary.net_worth_twd)),
       h('dl', { class: 'split' },
         stat('資產', formatTwd(summary.total_assets_twd)),
         stat('負債', formatTwd(summary.total_liabilities_twd)),
         stat('現金', formatTwd(summary.cash_twd)),
         stat('投資', formatTwd(summary.investments_twd)))),
+    h('div', { class: 'quick' },
+      h('button', { type: 'button', class: 'btn', onClick: () => ctx.go('entry', { tab: 'cash', mode: 'expense' }) }, '記支出'),
+      h('button', { type: 'button', class: 'btn', onClick: () => ctx.go('entry', { tab: 'cash', mode: 'income' }) }, '記收入'),
+      h('button', { type: 'button', class: 'btn', onClick: () => ctx.go('entry', { tab: 'transfer' }) }, '轉帳')),
+    templates.length ? section('再記一筆', templateChips(templates, names, ctx)) : null,
     missingFx(summary),
     section('帳戶餘額', balancesR.ok ? balanceList(balances, names) : failNote(balancesR)),
     section(`${month.label}收支`, incomeR.ok ? incomeBlock(report, categories) : failNote(incomeR)),
     holdings.length ? section('持倉', holdingList(holdings, names)) : null,
     section('報價與最後估值日', pricesR.ok ? priceBlock(pricesR.data) : failNote(pricesR, '報價')),
     section('資料檢查', checksR.ok ? checkBlock(checksR.data.warnings || []) : failNote(checksR)));
+}
+
+function templateChips(templates, names, ctx) {
+  return h('div', { class: 'chips' }, templates.map((item) => {
+    const account = names[item.account_id];
+    const text = account ? `${item.label || item.category} · ${account}` : (item.label || item.category);
+    return h('button', {
+      type: 'button',
+      class: 'chip',
+      onClick: () => ctx.go('entry', entryQuery(item)),
+    }, text);
+  }));
 }
 
 function needConfig(ctx) {
@@ -96,7 +116,7 @@ function balanceList(balances, names) {
       h('p', { class: 'acct-name' }, names[row.account_id] || row.name || row.account_id),
       h('p', { class: 'muted' }, `${ACCOUNT_TYPE[row.type] || row.type || ''} · ${row.currency}${row.fx_stale ? ' · 匯率過期' : ''}`)),
     h('div', { class: 'acct-amt' },
-      h('p', { class: 'num' }, formatMoney(row.balance, row.currency, row.currency === 'TWD' || row.currency === 'JPY' ? 0 : 2)),
+      h('p', { class: 'num' }, formatMoney(row.balance, row.currency, row.currency === 'JPY' ? 0 : 2)),
       h('p', { class: 'num muted' }, row.fx_missing ? '缺匯率' : formatTwd(row.balance_twd))))));
 }
 

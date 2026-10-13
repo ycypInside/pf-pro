@@ -8,7 +8,8 @@ function roundDigits(x, digits) {
   const sign = n < 0 ? -1 : 1;
   const factor = 10 ** digits;
   // 1e-6 corrects products that land just below a half step, such as 1186.5 × 32.15.
-  return sign * Math.round(Math.abs(n) * factor + 1e-6) / factor;
+  const rounded = sign * Math.round(Math.abs(n) * factor + 1e-6) / factor;
+  return rounded === 0 ? 0 : rounded;
 }
 
 export function round2(x) {
@@ -386,6 +387,8 @@ export function splitCategories(byCategory) {
 export function explainError(message) {
   const text = String(message || '').trim();
   if (!text) return '發生錯誤';
+  if (text === 'offline') return '目前沒有網路。恢復連線後再試。';
+  if (text === '連線失敗') return '連線失敗。請檢查網路後重試。';
   if (text === 'unauthorized') return '權杖不正確，連線被拒絕。';
   if (text === 'unknown action') return '後端還沒有這個動作。請重新部署 Apps Script 後再試。';
   if (text === 'unknown q') return '後端還沒有這個查詢。請重新部署 Apps Script 後再試。';

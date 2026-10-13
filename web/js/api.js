@@ -35,6 +35,15 @@ function endpoint(config = loadConfig()) {
   return { apiUrl: config.apiUrl.trim(), token: config.token.trim() };
 }
 
+function throwIfOffline() {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    const error = new Error('offline');
+    error.offline = true;
+    error.network = true;
+    throw error;
+  }
+}
+
 async function readJson(res) {
   const text = await res.text();
   try {
@@ -54,6 +63,7 @@ export async function apiGet(q, params = {}, config) {
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, String(value));
   }
+  throwIfOffline();
   let res;
   try {
     res = await fetch(url.toString(), {
@@ -90,6 +100,7 @@ export async function apiPost(action, data, requestId, config) {
     client: 'web',
     data,
   });
+  throwIfOffline();
   let res;
   try {
     res = await fetch(apiUrl, {

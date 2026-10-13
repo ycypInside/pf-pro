@@ -127,7 +127,7 @@ var ACTIONS = {
 
   /** V10: only active rows; transfer voids the whole group. */
   void_transaction: function (d, ctx) {
-    if (!d.void_reason) fail_('V10', 'void_reason required');
+    if (!ckVoidReasonOk_(d.void_reason)) fail_('V10', 'void_reason required');
     var rows = readTable_('Transactions'), target = rows.filter(function (r) { return r.txn_id === d.txn_id; })[0];
     if (!target) fail_('V10', 'unknown txn');
     if (target.status !== 'active') fail_('V10', 'only active rows can be voided');

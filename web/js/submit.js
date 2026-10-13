@@ -37,9 +37,12 @@ export function outcomeView(outcome, onRetry) {
     ? h('button', { type: 'button', class: 'btn ghost', onClick: onRetry }, '重試同一個 request')
     : null;
   if (outcome.network) {
+    const offline = outcome.error && outcome.error.offline;
     return h('div', { class: 'banner err', role: 'alert' },
-      h('strong', {}, '連線失敗'),
-      h('p', {}, '沒有收到回應。重試會沿用同一個 request_id，避免重複入帳。'),
+      h('strong', {}, offline ? '沒有網路' : '連線失敗'),
+      h('p', {}, offline
+        ? '目前沒有網路。恢復後重試會沿用同一個 request_id，避免重複入帳。'
+        : '沒有收到回應。重試會沿用同一個 request_id，避免重複入帳。'),
       idLine,
       retry);
   }
