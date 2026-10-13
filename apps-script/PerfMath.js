@@ -627,3 +627,181 @@ function pfBenchmarkSeries(dates, levels, fxLevels) {
     return { date: date, index: (Number(level.value) * fx) / (base * baseFx) };
   });
 }
+
+function pfAddDays_(date, days) {
+  var ms = Date.parse(String(date) + 'T00:00:00Z');
+  if (!isFinite(ms)) return '';
+  return new Date(ms + Number(days) * 86400000).toISOString().slice(0, 10);
+}
+
+function pfDateSpan_(from, to) {
+  var out = [];
+  if (!from || !to || from > to) return out;
+  var cursor = from;
+  var guard = 0;
+  while (cursor && cursor <= to && guard < 8000) {
+    out.push(cursor);
+    cursor = pfAddDays_(cursor, 1);
+    guard++;
+  }
+  return out;
+}
+
+function pfMonthKey_(today, offset) {
+  var y = Number(String(today).slice(0, 4));
+  var m = Number(String(today).slice(5, 7));
+  if (!isFinite(y) || !isFinite(m) || m < 1 || m > 12) return '';
+  var idx = y * 12 + (m - 1) - Number(offset || 0);
+  var yy = Math.floor(idx / 12);
+  var mm = idx - yy * 12 + 1;
+  if (mm < 1 || mm > 12) return '';
+  return String(yy) + (mm < 10 ? '0' : '') + String(mm);
+}
+
+function pfIsoDate_(value) {
+  if (value == null || value === '') return '';
+  if (Object.prototype.toString.call(value) === '[object Date]') {
+    if (typeof fmtDate_ === 'function') return fmtDate_(value);
+    return '';
+  }
+  var matched = /^(\d{4}-\d{2}-\d{2})/.exec(String(value));
+  return matched ? matched[1] : '';
+}
+
+function pfPriceIndex(rows) {
+  var fx = {};
+  var quotes = {};
+  (rows || []).forEach(function (row) {
+    if (!row) return;
+    var date = pfIsoDate_(row.date);
+    if (!date || !row.symbol || !row.kind) return;
+    if (row.kind === 'fx') {
+      if (!fx[row.symbol]) fx[row.symbol] = [];
+      fx[row.symbol].push({ date: date, value: Number(row.value) });
+      return;
+    }
+    var key = row.symbol + '|' + row.kind;
+    if (!quotes[key]) quotes[key] = [];
+    quotes[key].push({
+      date: date,
+      value: row.value,
+      currency: row.currency || '',
+      kind: row.kind,
+      symbol: row.symbol,
+      fetched_at: row.fetched_at || ''
+    });
+  });
+  Object.keys(fx).forEach(function (key) {
+    fx[key].sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+  });
+  Object.keys(quotes).forEach(function (key) {
+    quotes[key].sort(function (a, b) {
+      if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+      var left = String(a.fetched_at || '');
+      var right = String(b.fetched_at || '');
+      return left < right ? -1 : left > right ? 1 : 0;
+    });
+  });
+  return { fx: fx, quotes: quotes };
+}
+
+function pfLastOn_(list, date) {
+  if (!list || !list.length || !date) return null;
+  var lo = 0;
+  var hi = list.length - 1;
+  var best = -1;
+  while (lo <= hi) {
+    var mid = (lo + hi) >> 1;
+    if (list[mid].date <= date) { best = mid; lo = mid + 1; }
+    else hi = mid - 1;
+  }
+  return best < 0 ? null : list[best];
+}
+
+function pfFxAt_(index, currency, date) {
+  if (!currency || currency === 'TWD') return 1;
+  if (!index || !index.fx) return null;
+  var row = pfLastOn_(index.fx[currency + 'TWD'], date);
+  return row && isFinite(row.value) ? row.value : null;
+}
+
+function pfPickQuote_(asset, idx) {
+  var symbols = [];
+  if (asset && asset.symbol) symbols.push(asset.symbol);
+  if (asset && asset.asset_id && symbols.indexOf(asset.asset_id) < 0) symbols.push(asset.asset_id);
+  var kinds = asset && asset.asset_class === 'fund' ? ['nav', 'price']
+    : asset && asset.asset_class === 'bond' ? ['bond_valuation', 'price']
+    : ['price', 'nav', 'bond_valuation'];
+  for (var i = 0; i < symbols.length; i++) {
+    for (var j = 0; j < kinds.length; j++) {
+      var hit = idx[symbols[i] + '|' + kinds[j]];
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
+
+function pfQuoteAt_(asset, date, index) {
+  var symbols = [];
+  if (asset && asset.symbol) symbols.push(asset.symbol);
+  if (asset && asset.asset_id && symbols.indexOf(asset.asset_id) < 0) symbols.push(asset.asset_id);
+  var kinds = asset && asset.asset_class === 'fund' ? ['nav', 'price']
+    : asset && asset.asset_class === 'bond' ? ['bond_valuation', 'price']
+    : ['price', 'nav', 'bond_valuation'];
+  var idx = {};
+  for (var i = 0; i < symbols.length; i++) {
+    for (var j = 0; j < kinds.length; j++) {
+      var key = symbols[i] + '|' + kinds[j];
+      var hit = pfLastOn_(index && index.quotes ? index.quotes[key] : null, date);
+      if (hit) idx[key] = hit;
+    }
+  }
+  return pfPickQuote_(asset || {}, idx);
+}
+
+function pfMarkAt_(asset, date, index) {
+  var quote = pfQuoteAt_(asset, date, index);
+  var currency = (asset && asset.currency) || (quote && quote.currency) || '';
+  return {
+    price: quote && isFinite(Number(quote.value)) ? Number(quote.value) : null,
+    fx: pfFxAt_(index, currency, date),
+    kind: quote ? quote.kind : '',
+    date: quote ? quote.date : ''
+  };
+}
+
+function pfDayPoint_(date, books, balances, accounts, assets, priceIndex, snapNav) {
+  var holdingNavs = {};
+  var holdingByAccount = {};
+  Object.keys(books || {}).forEach(function (key) {
+    var book = books[key];
+    if (!(book && book.qty > 0)) return;
+    var asset = (assets && assets[book.asset_id]) || { asset_id: book.asset_id };
+    var mark = pfMarkAt_(asset, date, priceIndex);
+    var unrealized = pfUnrealized(book, mark.price, mark.fx);
+    if (unrealized.market_value_twd === '') return;
+    holdingNavs[key] = unrealized.market_value_twd;
+    holdingByAccount[book.account_id] = pfRound2((holdingByAccount[book.account_id] || 0) + unrealized.market_value_twd);
+  });
+  var accountNavs = {};
+  var cashTotal = 0;
+  (accounts || []).forEach(function (account) {
+    if (!account.is_investment || account.type === 'loan' || account.type === 'credit_card') return;
+    var local = balances ? Number(balances[account.account_id] || 0) : 0;
+    var fx = pfFxAt_(priceIndex, account.currency, date);
+    if (fx === null) return;
+    var cash = pfRound2(local * fx);
+    cashTotal += cash;
+    accountNavs[account.account_id] = pfRound2(cash + (holdingByAccount[account.account_id] || 0));
+  });
+  var holdingsTotal = 0;
+  Object.keys(holdingNavs).forEach(function (key) { holdingsTotal += holdingNavs[key]; });
+  var hasSnap = snapNav !== null && snapNav !== undefined && snapNav !== '' && isFinite(Number(snapNav));
+  return {
+    date: date,
+    nav: hasSnap ? pfRound2(Number(snapNav)) : pfRound2(cashTotal + holdingsTotal),
+    source: hasSnap ? 'snapshot' : 'computed',
+    accounts: accountNavs,
+    holdings: holdingNavs
+  };
+}

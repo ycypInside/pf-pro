@@ -47,13 +47,19 @@ function mergeRequestParams_(parameter, parameters, queryString) {
   return out;
 }
 
-/** '' means accept. auth_unavailable is a missing server secret, not a wrong client token. */
+/**
+ * null means accept.
+ * auth_unavailable / missing_secret: the script has no token to compare.
+ * unauthorized / missing_token: the client sent nothing (a 302 can drop the POST body).
+ * unauthorized / mismatch: a token arrived and it is not the stored one.
+ */
 function decideAuth_(presented, stored) {
   var expected = stored == null ? '' : String(stored).trim();
-  if (!expected) return 'auth_unavailable';
+  if (!expected) return { error: 'auth_unavailable', reason: 'missing_secret' };
   var given = presented == null ? '' : String(presented).trim();
-  if (!given || given !== expected) return 'unauthorized';
-  return '';
+  if (!given) return { error: 'unauthorized', reason: 'missing_token' };
+  if (given !== expected) return { error: 'unauthorized', reason: 'mismatch' };
+  return null;
 }
 
 /** True when today's BOT board rate is not in Prices_FX yet. */

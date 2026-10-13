@@ -9,12 +9,13 @@ function doPost(e) {
   try {
     beginRequest_();
     var raw = e && e.postData && e.postData.contents;
-    if (!raw) return json_({ ok: false, error: 'bad json' });
+    if (!raw) return json_({ ok: false, error: 'bad json', reason: 'parse_error' });
     var body;
-    try { body = JSON.parse(raw); } catch (parseErr) { return json_({ ok: false, error: 'bad json' }); }
+    try { body = JSON.parse(raw); } catch (parseErr) { return json_({ ok: false, error: 'bad json', reason: 'parse_error' }); }
     var params = requestParams_(e);
+    // A 302 from script.google.com follows as GET and drops the body. The query token still arrives.
     var auth = decideAuth_(body.token || params.token, scriptProp_('API_TOKEN'));
-    if (auth) return json_({ ok: false, error: auth });
+    if (auth) return json_({ ok: false, error: auth.error, reason: auth.reason });
     if (!body.request_id) return json_({ ok: false, error: 'request_id required' });
     var handler = ACTIONS[body.action];
     if (!handler) return json_({ ok: false, error: 'unknown action' });
@@ -62,7 +63,7 @@ function doGet(e) {
     beginRequest_();
     var p = requestParams_(e);
     var auth = decideAuth_(p.token, scriptProp_('API_TOKEN'));
-    if (auth) return json_({ ok: false, error: auth });
+    if (auth) return json_({ ok: false, error: auth.error, reason: auth.reason });
     if (p.q === 'health') return json_({ ok: true, schema_version: settings_().schema_version, at: nowIso_() });
     var extra = [p.from || '', p.to || '', p.period || '', p.benchmark || '', p.limit || ''].join('|');
     return json_(cachedGet_(String(p.q || '') + '|' + extra, function () { return routeGet_(p); }));
