@@ -95,10 +95,11 @@ export function renderSettings(main, ctx) {
     box.append(h('p', { class: 'muted' }, '讀取配置政策…'));
     const [settingsR, marketR] = await Promise.all([tryGet('settings'), tryGet('market')]);
     if (!pageCtx.alive()) return;
+    const settings = settingsR.ok && settingsR.data.settings ? settingsR.data.settings : null;
     const policy = (marketR.ok && marketR.data.policy)
-      || (settingsR.ok && settingsR.data.settings && settingsR.data.settings.target_policy)
+      || (settings && settings.target_policy)
       || null;
-    const lines = policyLines(policy);
+    const lines = policyLines(policy, settings);
     box.replaceChildren(h('section', { class: 'card' },
       h('h2', {}, '配置政策'),
       h('p', { class: 'hint' }, '唯讀。目標會隨市場情緒在上下限之間移動。'),

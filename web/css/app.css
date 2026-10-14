@@ -440,6 +440,9 @@ dialog.sheet::backdrop { background: rgba(22, 32, 28, 0.45); }
   color: inherit;
 }
 .quote-top, .quote-sub { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-width: 0; }
+.quote-name { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.tag.stale { background: var(--err); color: var(--red); flex: 0 0 auto; }
+.quote-stale { font-size: 12px; overflow-wrap: anywhere; }
 .quote-top strong, .quote-sub span { min-width: 0; overflow-wrap: anywhere; }
 .quote-metrics {
   display: grid;

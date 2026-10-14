@@ -1,5 +1,5 @@
 import { h } from '../dom.js';
-import { visibleAdvice } from '../groups.js';
+import { adviceTone, visibleAdvice } from '../groups.js';
 
 export const ADVICE_DISCLAIMER = '以上內容由規則依你的資料與公開市場數據自動產生，只是參考方向，不構成投資建議，也不是買賣指示。';
 
@@ -12,7 +12,7 @@ export function adviceCard(payload, failed) {
       ? h('p', { class: 'muted' }, '暫時讀不到建議。')
       : items.length
         ? h('div', { class: 'stack' }, items.map((item) => h('div', {
-          class: item.level === 'warn' ? 'banner err' : 'banner info',
+          class: adviceTone(item) === 'warn' ? 'banner err' : 'banner info',
           role: 'status',
         },
         h('strong', {}, item.title || ''),

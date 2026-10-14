@@ -209,6 +209,9 @@ export function joinHoldings(holdings, quotes) {
       change_pct: finite(quote.change_pct),
       spark: Array.isArray(quote.spark) ? quote.spark.slice(-30) : [],
       source: quote.source || '',
+      is_stale: quote.is_stale === true || quote.is_stale === 'true' || quote.is_stale === 'TRUE',
+      price_date: quote.price_date || '',
+      stale_limit_days: finite(quote.stale_limit_days),
       cost,
       value,
       pl,
@@ -265,6 +268,12 @@ export function visibleAdvice(items) {
   return (items || []).filter((item) => item && item.tag !== 'employer');
 }
 
+export function adviceTone(item) {
+  if (!item) return 'info';
+  if (item.level === 'warn' || item.tag === 'stale' || item.tag === 'dca_pause') return 'warn';
+  return 'info';
+}
+
 export function parsePolicy(value) {
   if (!value) return null;
   if (typeof value === 'string') {
@@ -278,10 +287,10 @@ export function parsePolicy(value) {
   return typeof value === 'object' ? value : null;
 }
 
-export function policyLines(policy) {
+export function policyLines(policy, settings) {
   const data = parsePolicy(policy);
   if (!data) return [];
-  return Object.keys(POLICY_LABEL).filter((key) => data[key] != null && data[key] !== '').map((key) => {
+  const lines = Object.keys(POLICY_LABEL).filter((key) => data[key] != null && data[key] !== '').map((key) => {
     let text = String(data[key]);
     if (PCT_KEYS.has(key)) {
       const n = Number(data[key]);
@@ -289,8 +298,65 @@ export function policyLines(policy) {
     } else if (key === 'other') {
       text = data[key] === 'hold' ? '維持現況' : text;
     } else if (key === 'sentiment_mode') {
-      text = data[key] === 'aggressive_when_hot' ? '過熱時提高股票' : '過熱時降低股票';
+      if (data[key] === 'off') text = '不隨情緒調整';
+      else if (data[key] === 'aggressive_when_hot') text = '過熱時提高股票';
+      else text = '過熱時降低股票';
     }
     return { key, label: POLICY_LABEL[key], text };
   });
+  lines.push(
+    { key: 'dca_exempt_enabled', label: '定額豁免', text: onOff(data.dca_exempt_enabled) },
+    { key: 'dca_core_assets', label: '核心定額標的', text: formatCore(data.dca_core_assets) },
+    { key: 'dca_pause', label: '定額暫停', text: formatPause(data.dca_pause) },
+    { key: 'stale_days_overrides', label: '過期天數覆寫', text: formatOverrides(overridesOf(data, settings)) },
+  );
+  return lines;
+}
+
+function onOff(value) {
+  return value === true || String(value).toUpperCase() === 'TRUE' ? '開啟' : '關閉';
+}
+
+function formatCore(value) {
+  const list = Array.isArray(value) ? value : String(value || '').split(/[,，\s]+/);
+  const names = list.map((item) => String(item).trim()).filter(Boolean);
+  return names.length ? names.join('、') : '尚未指定';
+}
+
+function formatPause(value) {
+  const pause = asObject(value) || {};
+  if (!onOff(pause.enabled).startsWith('開')) return '關閉';
+  const cash = Number(pause.cash_pct_total);
+  const net = Number(pause.net_cash_pct_nw);
+  const cashText = Number.isFinite(cash) ? `${Math.round(cash * 100)}%` : '—';
+  const netText = Number.isFinite(net) ? `${Math.round(net * 100)}%` : '—';
+  return `開啟，現金低於總資產 ${cashText} 或淨現金低於淨值 ${netText} 時暫停`;
+}
+
+function overridesOf(policy, settings) {
+  if (settings && settings.stale_days_overrides != null && settings.stale_days_overrides !== '') {
+    return settings.stale_days_overrides;
+  }
+  return policy ? policy.stale_days_overrides : null;
+}
+
+function formatOverrides(value) {
+  const data = typeof value === 'string' ? asObject(value) : asObject(value);
+  if (!data || Array.isArray(data)) return '尚未設定';
+  const keys = Object.keys(data);
+  if (!keys.length) return '尚未設定';
+  return keys.map((key) => `${key}：${data[key]} 天`).join('、');
+}
+
+function asObject(value) {
+  if (!value) return null;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+  return typeof value === 'object' ? value : null;
 }

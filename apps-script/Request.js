@@ -114,3 +114,13 @@ function fxNeedsFetch_(latestDate, today) {
   if (!latestDate) return true;
   return String(latestDate) < String(today);
 }
+
+/** Read-only token: only its SHA-256 hex is stored (script property API_TOKEN_RO_SHA256). GET only. */
+function decideReadAuth_(presented) {
+  var full = decideAuth_(presented, scriptProp_('API_TOKEN'));
+  if (!full) return { auth: null, role: 'full' };
+  var given = presented == null ? '' : String(presented).trim();
+  var roHash = scriptProp_('API_TOKEN_RO_SHA256');
+  if (given && roHash && sha256_(given) === String(roHash).trim()) return { auth: null, role: 'readonly' };
+  return { auth: full, role: '' };
+}

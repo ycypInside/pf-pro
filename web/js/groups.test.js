@@ -8,6 +8,7 @@ import {
   isGroupOpen,
   isVisibleAccount,
   joinHoldings,
+  adviceTone,
   policyLines,
   readGroupState,
   sortHoldings,
@@ -126,4 +127,36 @@ test('advice and policy omit the removed employer limit', () => {
   assert.equal(lines.find((line) => line.key === 'single_name_max').text, '10%');
   assert.equal(lines.find((line) => line.key === 'other').text, '維持現況');
   assert.equal(lines.find((line) => line.key === 'sentiment_mode').text, '過熱時降低股票');
+  assert.equal(lines.find((line) => line.key === 'dca_exempt_enabled').text, '關閉');
+  assert.equal(lines.find((line) => line.key === 'dca_core_assets').text, '尚未指定');
+  assert.equal(lines.find((line) => line.key === 'dca_pause').text, '關閉');
+  assert.equal(lines.find((line) => line.key === 'stale_days_overrides').text, '尚未設定');
+  assert.equal(adviceTone({ tag: 'stale', level: 'info' }), 'warn');
+  assert.equal(adviceTone({ tag: 'dca_pause', level: 'info' }), 'warn');
+  assert.equal(adviceTone({ tag: 'cash', level: 'info' }), 'info');
+});
+
+test('stale quotes keep the price date and limit', () => {
+  const [fresh, stale] = joinHoldings([
+    { asset_id: 'a', symbol: '0050', name: '元大台灣50', account_id: 'x', market_value_twd: 10, cost_basis_twd: 8, unrealized_pl_twd: 2 },
+    { asset_id: 'b', symbol: 'SI-145', name: '基金', account_id: 'x', market_value_twd: 10, cost_basis_twd: 8, unrealized_pl_twd: 2 },
+  ], {
+    a: { last: 10, is_stale: false, change_pct: 0 },
+    b: { last: 9, is_stale: true, price_date: '2026-08-01', stale_limit_days: 14, change_pct: -0.01 },
+  });
+  assert.equal(fresh.is_stale, false);
+  assert.equal(stale.is_stale, true);
+  assert.equal(stale.price_date, '2026-08-01');
+  assert.equal(stale.stale_limit_days, 14);
+  const lines = policyLines({
+    sentiment_mode: 'off',
+    dca_exempt_enabled: true,
+    dca_core_assets: ['0050', 'VOO'],
+    dca_pause: { enabled: true, cash_pct_total: 0.08, net_cash_pct_nw: 0.02 },
+  }, { stale_days_overrides: '{"SI-145":14,"nav:USD":21}' });
+  assert.equal(lines.find((line) => line.key === 'sentiment_mode').text, '不隨情緒調整');
+  assert.equal(lines.find((line) => line.key === 'dca_exempt_enabled').text, '開啟');
+  assert.equal(lines.find((line) => line.key === 'dca_core_assets').text, '0050、VOO');
+  assert.equal(lines.find((line) => line.key === 'dca_pause').text, '開啟，現金低於總資產 8% 或淨現金低於淨值 2% 時暫停');
+  assert.equal(lines.find((line) => line.key === 'stale_days_overrides').text, 'SI-145：14 天、nav:USD：21 天');
 });
