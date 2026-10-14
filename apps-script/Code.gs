@@ -105,6 +105,8 @@ function routeGet_(p) {
     case 'dca': return dcaPayload_();
     case 'holding_cards': return holdingCardsPayload_();
     case 'alerts': return alertsPayload_();
+    case 'paper': return paperPayload_();
+    case 'decisions': return decisionsPayload_();
     case 'income_expense':
     case 'incomeexpense': return { ok: true, report: incomeExpense_(p.from, p.to) };
     case 'checks': return { ok: true, warnings: dailyChecks_() };
@@ -172,6 +174,12 @@ var ACTIONS = {
     audit_(ctx, 'config_change', 'Settings', 'ensure_p1_sheets', null, res);
     return { ids: res.map(function (r) { return r.sheet; }), sheets: res };
   },
+  ensure_paper_sheet: function (d, ctx) {
+    var res = ensurePaperSheet_();
+    audit_(ctx, 'config_change', 'Settings', 'ensure_paper_sheet', null, res);
+    return { ids: ['Paper_Daily'], sheet: res };
+  },
+  upsert_paper: function (d, ctx) { return upsertP1_('Paper_Daily', d.rows, ctx); },
   upsert_plan: function (d, ctx) { return upsertP1_('Plan', d.rows, ctx); },
   upsert_dca: function (d, ctx) { return upsertP1_('DCA', d.rows, ctx); },
   upsert_holding_rules: function (d, ctx) { return upsertP1_('Holding_Rules', d.rows, ctx); },

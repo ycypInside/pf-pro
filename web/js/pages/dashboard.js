@@ -3,7 +3,7 @@ import { h, mount } from '../dom.js';
 import { formatPct, formatRate, formatTwd } from '../format.js';
 import { kindLabel } from '../labels.js';
 import { explainError, netWorth, splitCategories, taipeiMonth, withTwd } from '../money.js';
-import { collectDecisions, dayChange, pathProgress, wanLabel } from '../p1.js';
+import { dayChange, decisionView, pathProgress, wanLabel } from '../p1.js';
 import { entryQuery, readTemplates } from '../prefs.js';
 import { renderAccountGroups } from './accounts.js';
 import { adviceCard } from './advice.js';
@@ -18,7 +18,7 @@ export async function renderDashboard(main, ctx) {
   main.append(h('p', { class: 'muted' }, '讀取中…'));
   const month = taipeiMonth();
   const loaded = await loadOverview(month);
-  const { accountsR, balancesR, incomeR, checksR, pricesR, holdingsR, quotesR, adviceR, alertsR, planR, dcaR, decisionsR, performanceR } = loaded;
+  const { accountsR, balancesR, incomeR, checksR, pricesR, holdingsR, quotesR, adviceR, alertsR, planR, decisionsR } = loaded;
   if (!ctx.alive()) return;
   main.replaceChildren();
   const fatal = [accountsR, balancesR, incomeR, checksR].find((item) => !item.ok);
@@ -45,15 +45,11 @@ export async function renderDashboard(main, ctx) {
   const templates = readTemplates(localStorage).filter((item) => !item.account_id || known.has(item.account_id));
 
   const quoteBook = quotesR.ok ? quotesR.data.quotes : {};
-  const decisions = collectDecisions({
-    decisions: decisionsR && decisionsR.ok ? decisionsR.data : null,
-    alerts: alertsR && alertsR.ok ? alertsR.data.alerts : null,
-    dcaItems: dcaR && dcaR.ok ? dcaR.data.items : null,
-    quotes: quotesR.ok ? quoteBook : null,
-  });
+  const decisionData = decisionsR && decisionsR.ok ? decisionsR.data : null;
+  const decisions = decisionView(decisionData);
   const planData = planR && planR.ok ? planR.data : null;
-  const change = dayChange(planData, performanceR && performanceR.ok ? performanceR.data : null);
-  const path = pathProgress(planData && planData.tracks, planData ? planData.net_worth_twd : summary.net_worth_twd);
+  const change = dayChange(decisionData) || dayChange(planData);
+  const path = pathProgress(planData);
 
   mount(main,
     section('待您決定', decisionsBody(decisions)),
@@ -99,7 +95,7 @@ function templateChips(templates, names, ctx) {
 }
 
 async function loadOverview(month) {
-  const [summary, balances, quotes, advice, holdings, alerts, plan, dca, decisions, performance] = await Promise.all([
+  const [summary, balances, quotes, advice, holdings, alerts, plan, decisions] = await Promise.all([
     tryGet('summary', { from: month.from, to: month.to }),
     tryGet('balances'),
     tryGet('quotes'),
@@ -107,9 +103,7 @@ async function loadOverview(month) {
     tryGet('holdings'),
     tryGet('alerts'),
     tryGet('plan'),
-    tryGet('dca'),
     tryGet('decisions'),
-    tryGet('performance', { period: '1Y' }),
   ]);
   if (summary.ok) {
     const data = summary.data;
@@ -127,9 +121,7 @@ async function loadOverview(month) {
       adviceR: advice,
       alertsR: alerts,
       planR: plan,
-      dcaR: dca,
       decisionsR: decisions,
-      performanceR: performance,
     };
   }
   if (summary.error && summary.error.message === 'unknown q') {
@@ -143,7 +135,7 @@ async function loadOverview(month) {
     ]);
     return {
       accountsR, balancesR, incomeR, checksR, pricesR, holdingsR, quotesR: quotes, adviceR: advice, alertsR: alerts,
-      planR: plan, dcaR: dca, decisionsR: decisions, performanceR: performance,
+      planR: plan, decisionsR: decisions,
     };
   }
   return {
@@ -157,25 +149,32 @@ async function loadOverview(month) {
     adviceR: advice,
     alertsR: alerts,
     planR: plan,
-    dcaR: dca,
     decisionsR: decisions,
-    performanceR: performance,
   };
 }
 
 function decisionsBody(decisions) {
-  if (!decisions.known && !decisions.items.length) return h('p', { class: 'muted' }, '讀不到待決定事項。');
-  if (!decisions.items.length) return h('p', { class: 'ok-text' }, '今天無事');
-  return h('div', {}, decisions.items.map((item) => h('article', { class: `decision decision-${item.kind}` },
-    h('p', {}, item.title),
-    item.detail ? h('p', { class: 'muted' }, item.detail) : null)));
+  const note = h('p', { class: 'hint' }, decisions.disclaimer || '待決事項僅為提醒，不是操作單。');
+  if (!decisions.known) {
+    return h('div', {}, h('p', { class: 'muted' }, '讀不到待決定事項。'), note);
+  }
+  if (!decisions.count) {
+    return h('div', {}, h('p', { class: 'ok-text' }, '今天無事'), note);
+  }
+  return h('div', {},
+    decisions.items.map((item) => h('article', { class: `decision decision-${item.kind}` },
+      h('p', {}, item.title),
+      item.detail ? h('p', { class: 'muted' }, item.detail) : null)),
+    note);
 }
 
 function changeLine(change) {
-  if (!change || !Number.isFinite(change.twd)) return null;
-  const tone = change.twd < 0 ? 'down' : change.twd > 0 ? 'up' : '';
-  const pct = Number.isFinite(change.pct) ? `（${formatPct(change.pct)}）` : '';
-  return h('p', { class: `day-change ${tone}` }, `較前一日 ${formatTwd(change.twd)}${pct}`);
+  if (!change) return null;
+  const twd = Number.isFinite(change.twd) ? formatTwd(change.twd) : '—';
+  const pct = Number.isFinite(change.pct) ? formatPct(change.pct) : '—';
+  const tone = !Number.isFinite(change.twd) ? '' : change.twd < 0 ? 'down' : change.twd > 0 ? 'up' : '';
+  const span = change.prevDate && change.date ? ` ${change.prevDate} → ${change.date}` : '';
+  return h('p', { class: `day-change ${tone}` }, `較前一日 ${twd}（${pct}）${span}`);
 }
 
 function pathBar(path) {

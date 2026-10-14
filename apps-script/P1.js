@@ -7,7 +7,7 @@ var P1_SCHEMA = {
   DCA: ['dca_id', 'asset_id', 'symbol', 'name', 'account_id', 'currency', 'amount', 'debit_day', 'start_date', 'status', 'last_debit_date', 'core', 'note', 'updated_at'],
   Holding_Rules: ['rule_key', 'card_key', 'card_name', 'card_class', 'asset_ids', 'card_status', 'rule_id', 'type', 'level', 'pct', 'date', 'confirm_days', 'grp', 'tier', 'info', 'action', 'reason', 'seed_peak', 'events', 'card_note', 'status', 'updated_at']
 };
-var P1_KEY = { Plan: 'plan_id', DCA: 'dca_id', Holding_Rules: 'rule_key' };
+var P1_KEY = { Plan: 'plan_id', DCA: 'dca_id', Holding_Rules: 'rule_key', Paper_Daily: 'row_id' };
 
 function ensureP1Sheets_() {
   var ss = ss_(), out = [];
@@ -41,6 +41,7 @@ function p1Clean_(table, row) {
 
 /** Insert or update rows by key; returns counts. Each change is audited. */
 function upsertP1_(table, rows, ctx) {
+  if (table === 'Paper_Daily' && !P1_SCHEMA.Paper_Daily) P1_SCHEMA.Paper_Daily = PAPER_HDR;
   if (!P1_SCHEMA[table]) fail_('V1', 'unknown table');
   if (!rows || !rows.length) fail_('V1', 'rows required');
   var key = P1_KEY[table];
@@ -106,7 +107,12 @@ function planPayload_() {
     t.on_track = nw >= planNow;
     return t;
   });
-  return { ok: true, as_of: today, net_worth_twd: nw, tracks: out,
+  var main = out.filter(function (t) { return t.track === 'main'; })[0];
+  var y1 = main ? main.milestones.filter(function (m) { return m.year === 1; })[0] : null;
+  var start = main ? main.baseline_twd : 14020000, y1t = y1 ? y1.target_twd : 16540000;
+  var pathD = { start_twd: start, start_date: main ? main.baseline_date : '2026-09-16', year1_target_twd: y1t, year1_date: y1 ? y1.target_date : '2027-09-16',
+    actual_twd: nw, progress_pct: y1t > start ? pfRound6((nw - start) / (y1t - start)) : null, remaining_twd: round2_(y1t - nw) };
+  return { ok: true, as_of: today, net_worth_twd: nw, path_d: pathD, nw_day_change: nwDayChange_(), tracks: out,
     note: '計畫值以基期淨值、月投入與年化報酬（月複利）推算；實際值為目前淨值（含非計畫內資產）。' };
 }
 

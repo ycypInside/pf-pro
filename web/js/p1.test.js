@@ -3,15 +3,16 @@ import test from 'node:test';
 import { daysBetween } from './money.js';
 import {
   alertLevel,
+  benchmarkSymbol,
   canMarkDebited,
   cardViews,
   cardsForAsset,
-  collectDecisions,
   dayChange,
   dcaStatusLine,
   debitDayLabel,
+  decisionView,
   monthStateLabel,
-  paperSleeves,
+  paperView,
   pathProgress,
   planPoints,
   plannedValue,
@@ -79,59 +80,61 @@ test('DCA state labels and which rows can be marked debited', () => {
   assert.equal(canMarkDebited({ month_state: 'pending' }), false);
 });
 
-test('path D progress uses the baseline and the year-1 target', () => {
-  const tracks = [
-    {
-      track: 'D',
-      label: '路徑 D',
-      baseline_twd: 14020000,
+test('path D progress reads path_d as a ratio', () => {
+  const tracks = [{ track: '挑戰上億', label: '挑戰上億', gap_twd: -100, gap_pct: -0.01 }];
+  const ratio = (15000000 - 14020000) / (16540000 - 14020000);
+  const path = pathProgress({
+    tracks,
+    path_d: {
+      start_twd: 14020000,
+      start_date: '2026-09-16',
+      year1_target_twd: 16540000,
+      year1_date: '2027-09-16',
       actual_twd: 15000000,
-      milestones: [{ year: 1, target_twd: 16540000 }],
+      progress_pct: ratio,
+      remaining_twd: 1540000,
     },
-    { track: '挑戰上億', label: '挑戰上億', gap_twd: -100, gap_pct: -0.01 },
-  ];
-  const path = pathProgress(tracks, 1);
+  });
   assert.equal(wanLabel(path.start), '1,402萬');
   assert.equal(wanLabel(path.target), '1,654萬');
-  assert.equal(path.ratio, (15000000 - 14020000) / (16540000 - 14020000));
+  assert.equal(path.startDate, '2026-09-16');
+  assert.equal(path.year1Date, '2027-09-16');
+  assert.equal(path.ratio, ratio);
+  assert.equal(path.remaining, 1540000);
   assert.equal(yiTrack(tracks).track, '挑戰上億');
-  assert.equal(pathProgress([{ track: 'main', label: '主計畫', baseline_twd: 1, milestones: [] }], 1), null);
+  assert.equal(pathProgress({ tracks }), null);
 });
 
-test('day change prefers an explicit figure and otherwise uses the latest trading step', () => {
-  assert.deepEqual(dayChange({ day_change_twd: -100, day_change_pct: -0.01 }), { twd: -100, pct: -0.01 });
-  const stepped = dayChange({ net_worth_twd: 110 }, {
-    series: [
-      { date: '2026-10-12', index: 1 },
-      { date: '2026-10-13', index: 1.1 },
-    ],
-  });
-  assert.ok(Math.abs(stepped.twd - 10) < 1e-6);
-  assert.equal(dayChange({ net_worth_twd: 110 }, {
-    series: [
-      { date: '2026-01-02', index: 1 },
-      { date: '2026-10-13', index: 1.1 },
-    ],
-  }), null);
+test('day change reads nw_day_change and keeps a null percent', () => {
+  assert.deepEqual(dayChange({
+    nw_day_change: { change_twd: -100, change_pct: -0.01, date: '2026-10-14', prev_date: '2026-10-13' },
+  }), { twd: -100, pct: -0.01, date: '2026-10-14', prevDate: '2026-10-13' });
+  assert.deepEqual(dayChange({
+    change_twd: null,
+    change_pct: null,
+    date: '2026-10-14',
+    prev_date: null,
+  }), { twd: null, pct: null, date: '2026-10-14', prevDate: '' });
+  assert.equal(dayChange({ net_worth_twd: 110, series: [{ date: '2026-10-13', index: 1.1 }] }), null);
 });
 
-test('decisions come from the dedicated payload, otherwise from alerts, pauses, and stale quotes', () => {
-  assert.deepEqual(collectDecisions({
-    decisions: { ok: true, items: [{ title: '後端決定', detail: '一筆' }] },
-    alerts: [{ level: 'red', type: 'close_below', name: '忽略' }],
-  }).items.map((item) => item.title), ['後端決定']);
-  const derived = collectDecisions({
-    alerts: [
-      { level: 'red', type: 'close_below', name: '元大台灣50', action: '檢視部位', detail: '連續 1/3 日' },
-      { level: 'watch', type: 'close_below', name: '還沒確認', detail: '連續 1/3 日' },
-      { level: 'amber', type: 'trade_ticket', name: '賣出單', action: '確認' },
-    ],
-    dcaItems: [{ name: '元大S&P500', month_state: 'paused_by_brake' }],
-    quotes: { 4938: { name: '和碩', is_stale: true, price_date: '2026-08-01' } },
+test('decisions come from q=decisions and an empty count stays quiet', () => {
+  const filled = decisionView({
+    count: 1,
+    items: [{ kind: 'exit_line', level: 'red', title: '元大台灣50：檢視部位', detail: '線下', ref: 'r1' }],
+    disclaimer: '待決事項僅為提醒，不是操作單。',
   });
-  assert.deepEqual(derived.items.map((item) => item.kind), ['exit', 'ticket', 'dca', 'stale']);
-  assert.equal(collectDecisions({ alerts: [] }).items.length, 0);
-  assert.equal(collectDecisions({ alerts: [] }).known, true);
+  assert.equal(filled.known, true);
+  assert.equal(filled.count, 1);
+  assert.equal(filled.items[0].kind, 'exit_line');
+  assert.match(filled.disclaimer, /不是操作單/);
+  const quiet = decisionView({ count: 0, items: [] });
+  assert.equal(quiet.known, true);
+  assert.equal(quiet.count, 0);
+  assert.equal(quiet.items.length, 0);
+  assert.match(quiet.disclaimer, /不是操作單/);
+  assert.equal(decisionView(null).known, false);
+  assert.match(decisionView({ ok: false }).disclaimer, /不是操作單/);
   assert.equal(dcaStatusLine([
     { month_state: 'debited' },
     { month_state: 'pending' },
@@ -161,14 +164,41 @@ test('holding cards show the exit distance, day count, and thesis date', () => {
   assert.equal(card.thesis, '2026-11-15');
 });
 
-test('paper sleeves stay A/B/C against 0050 and 00631L even before the payload arrives', () => {
-  assert.deepEqual(paperSleeves(null).map((row) => row.id), ['A', 'B', 'C']);
-  assert.deepEqual(paperSleeves(null)[0].benchmarks, ['0050', '00631L']);
-  const filled = paperSleeves({
-    sleeves: [{ id: 'B', benchmark: '00631L', positions: [{ symbol: '紙上0050', quantity: 1 }] }],
+test('paper maps benchmark 50 to 0050 and always lists sleeves A/B/C', () => {
+  assert.equal(benchmarkSymbol('50'), '0050');
+  assert.equal(benchmarkSymbol('00631L'), '00631L');
+  const empty = paperView(null);
+  assert.deepEqual(empty.sleeves.map((row) => row.sleeve), ['A', 'B', 'C']);
+  assert.match(empty.note, /不計入淨值/);
+  const view = paperView({
+    sleeves: [{
+      sleeve: 'A',
+      equity_twd: 1050000,
+      return_pct: 5,
+      vs_0050_pp: 1.2,
+      vs_00631L_pp: -0.4,
+      gate: {
+        target: 21.71,
+        min_trading_days: 20,
+        go_live_allowed: false,
+        checks: [{ label: '交易日', current: '12/20', ok: false }],
+      },
+      positions: [{ code: '2330', name: '台積電', qty: 10, pnl_pct: 5.56 }],
+      series: [{ date: '2026-10-13', return_pct: 5 }],
+    }],
+    benchmarks: {
+      50: { symbol: '50', return_pct: 3.5, series: [{ date: '2026-10-13', return_pct: 3.5 }] },
+      '00631L': { symbol: '00631L', return_pct: 5.4, series: [] },
+    },
   });
-  assert.equal(filled[1].positions[0].symbol, '紙上0050');
-  assert.deepEqual(filled[0].positions, []);
+  assert.equal(view.benchmarks['0050'].symbol, '0050');
+  assert.equal(view.benchmarks['0050'].returnPct, 3.5);
+  assert.equal(view.benchmarks['50'], undefined);
+  assert.equal(view.sleeves[0].positions[0].name, '台積電');
+  assert.equal(view.sleeves[0].gate.checks[0].ok, false);
+  assert.equal(view.sleeves[0].gate.goLive, false);
+  assert.equal(view.sleeves[1].present, false);
+  assert.equal(view.sleeves[2].sleeve, 'C');
 });
 
 test('holding card rules match the asset and only priced active rules become lines', () => {

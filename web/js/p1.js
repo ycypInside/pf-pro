@@ -121,29 +121,23 @@ export function wanLabel(value) {
   return `${n < 0 ? '−' : ''}${text}萬`;
 }
 
-function isPathD(track) {
-  const text = `${track.track || ''} ${track.label || ''}`;
-  return /路徑\s*D|(^|\s)D($|\s)|path[-_\s]?d/i.test(text);
+function finiteOrNull(value) {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
 }
 
-export function pathProgress(tracks, netWorth) {
-  const track = (tracks || []).find((item) => isPathD(item));
-  if (!track) return null;
-  const start = Number(track.baseline_twd);
-  const year1 = (track.milestones || []).find((item) => Number(item.year) === 1) || (track.milestones || [])[0] || null;
-  const target = year1 ? Number(year1.target_twd) : NaN;
-  const actual = Number.isFinite(Number(track.actual_twd)) ? Number(track.actual_twd) : Number(netWorth);
-  let ratio = null;
-  if (Number.isFinite(start) && Number.isFinite(target) && target !== start && Number.isFinite(actual)) {
-    ratio = (actual - start) / (target - start);
-  }
+export function pathProgress(plan) {
+  const path = plan && plan.path_d;
+  if (!path) return null;
   return {
-    label: trackLabel(track),
-    start,
-    target,
-    actual,
-    ratio,
-    year: year1 ? year1.year : null,
+    start: finiteOrNull(path.start_twd),
+    startDate: path.start_date || '',
+    target: finiteOrNull(path.year1_target_twd),
+    year1Date: path.year1_date || '',
+    actual: finiteOrNull(path.actual_twd),
+    ratio: finiteOrNull(path.progress_pct),
+    remaining: finiteOrNull(path.remaining_twd),
   };
 }
 
@@ -151,29 +145,17 @@ export function yiTrack(tracks) {
   return (tracks || []).find((item) => /上億/.test(`${item.track || ''}${item.label || ''}`)) || null;
 }
 
-export function dayChange(plan, performance) {
-  if (!plan) return null;
-  if (Number.isFinite(Number(plan.day_change_twd))) {
-    const pct = Number(plan.day_change_pct);
-    return { twd: Number(plan.day_change_twd), pct: Number.isFinite(pct) ? pct : null };
-  }
-  if (Number.isFinite(Number(plan.prev_net_worth_twd)) && Number.isFinite(Number(plan.net_worth_twd))) {
-    const prev = Number(plan.prev_net_worth_twd);
-    const now = Number(plan.net_worth_twd);
-    return { twd: now - prev, pct: prev ? (now - prev) / prev : null };
-  }
-  const series = (performance && performance.series) || [];
-  if (series.length < 2 || !Number.isFinite(Number(plan.net_worth_twd))) return null;
-  const prev = series[series.length - 2];
-  const last = series[series.length - 1];
-  const gap = daysBetween(prev.date, last.date);
-  if (gap < 1 || gap > 5) return null;
-  const a = Number(prev.index);
-  const b = Number(last.index);
-  if (!Number.isFinite(a) || !Number.isFinite(b) || a === 0 || b === 0) return null;
-  const now = Number(plan.net_worth_twd);
-  const before = now * (a / b);
-  return { twd: now - before, pct: before ? (now - before) / before : null };
+export function dayChange(source) {
+  if (!source) return null;
+  const change = source.nw_day_change
+    || (Object.prototype.hasOwnProperty.call(source, 'change_twd') ? source : null);
+  if (!change) return null;
+  return {
+    twd: finiteOrNull(change.change_twd),
+    pct: finiteOrNull(change.change_pct),
+    date: change.date || '',
+    prevDate: change.prev_date || '',
+  };
 }
 
 export function dcaStatusLine(items) {
@@ -184,20 +166,20 @@ export function dcaStatusLine(items) {
   return `本月定額：已扣款 ${counts.debited}、待扣款 ${counts.pending}、煞車暫停 ${counts.paused_by_brake}`;
 }
 
-function decisionDetail(alert) {
-  return [alert.action, alert.reason, alert.detail].filter(Boolean).join(' · ');
-}
+const DECISION_DISCLAIMER = '待決事項僅為提醒，不是操作單。';
 
-function isExitAlert(alert) {
-  const type = String(alert.type || '');
-  const text = `${alert.action || ''}${alert.reason || ''}`;
-  const exit = type === 'close_below' || type === 'close_above' || /出場/.test(text);
-  return exit && (alert.level === 'red' || alert.level === 'amber');
-}
-
-function isTicketAlert(alert) {
-  const type = String(alert.type || alert.kind || '');
-  return type === 'trade_ticket' || type === 'ticket' || type === 'pending_ticket';
+export function decisionView(data) {
+  const disclaimer = (data && data.disclaimer) || DECISION_DISCLAIMER;
+  if (!data || data.ok === false) return { known: false, count: 0, items: [], disclaimer };
+  const items = (data.items || []).map((item) => ({
+    kind: item.kind || '',
+    level: item.level || '',
+    title: item.title || '',
+    detail: item.detail || '',
+    ref: item.ref || '',
+  }));
+  const count = data.count == null ? items.length : Number(data.count);
+  return { known: true, count: Number.isFinite(count) ? count : items.length, items, disclaimer };
 }
 
 export function quoteMap(quotes) {
@@ -206,56 +188,6 @@ export function quoteMap(quotes) {
     return Object.fromEntries(quotes.map((quote) => [quote.asset_id || quote.symbol, quote]));
   }
   return quotes;
-}
-
-function hasDecisionList(data) {
-  return Array.isArray(data.items) || Array.isArray(data.decisions);
-}
-
-export function collectDecisions({ decisions, alerts, dcaItems, quotes } = {}) {
-  if (decisions && decisions.ok !== false && hasDecisionList(decisions)) {
-    const rows = decisions.items || decisions.decisions;
-    return {
-      known: true,
-      items: rows.map((item) => ({
-        kind: item.kind || item.type || 'info',
-        title: item.title || item.name || item.action || '待決定',
-        detail: item.detail || item.reason || '',
-      })).filter((item) => item.title),
-    };
-  }
-  const items = [];
-  const seen = new Set();
-  const add = (item) => {
-    const key = `${item.kind}:${item.title}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    items.push(item);
-  };
-  let known = false;
-  if (Array.isArray(alerts)) {
-    known = true;
-    for (const alert of alerts) {
-      if (isExitAlert(alert)) add({ kind: 'exit', title: `${alert.name || '持股'} 出場線已觸發`, detail: decisionDetail(alert) });
-      else if (alert.type === 'stale_quote') add({ kind: 'stale', title: `${alert.name || '報價'} 報價過期`, detail: decisionDetail(alert) });
-      else if (isTicketAlert(alert)) add({ kind: 'ticket', title: alert.name ? `${alert.name} 待處理交易單` : '待處理交易單', detail: decisionDetail(alert) });
-    }
-  }
-  if (Array.isArray(dcaItems)) {
-    for (const item of dcaItems) {
-      if (item.month_state === 'paused_by_brake') {
-        add({ kind: 'dca', title: `${item.name || item.symbol || '定額'} 定額暫停`, detail: '現金煞車，這個月先不扣。' });
-      }
-    }
-  }
-  if (quotes && typeof quotes === 'object') {
-    for (const [id, quote] of Object.entries(quoteMap(quotes))) {
-      if (!quote || !isYes(quote.is_stale)) continue;
-      const name = quote.name || quote.symbol || id;
-      add({ kind: 'stale', title: `${name} 報價過期`, detail: quote.price_date ? `價格日 ${quote.price_date}` : '' });
-    }
-  }
-  return { known, items };
 }
 
 function dayCount(alerts, rule) {
@@ -307,25 +239,66 @@ export function cardViews(cards, quotes, alerts) {
   });
 }
 
-const PAPER_BENCHMARKS = ['0050', '00631L'];
+export function benchmarkSymbol(symbol) {
+  return String(symbol || '') === '50' ? '0050' : String(symbol || '');
+}
 
-export function paperSleeves(payload) {
-  const source = (payload && (payload.sleeves || payload.rows || payload.books)) || [];
-  const byId = new Map();
-  for (const row of source) {
-    const raw = String(row.sleeve || row.id || row.name || '').replace(/^紙上倉\s*/, '');
-    if (raw) byId.set(raw, row);
-  }
-  return ['A', 'B', 'C'].map((id) => {
-    const row = byId.get(id) || {};
-    const bench = row.benchmark || row.vs || row.benchmarks;
-    const benchmarks = Array.isArray(bench)
-      ? bench.filter(Boolean)
-      : bench ? String(bench).split(/[、,\s]+/).filter(Boolean) : PAPER_BENCHMARKS;
+export function paperView(payload) {
+  const data = payload && payload.ok !== false ? payload : {};
+  const rows = data.sleeves || [];
+  const sleeves = ['A', 'B', 'C'].map((id) => {
+    const row = rows.find((item) => String(item.sleeve) === id) || { sleeve: id };
+    const gate = row.gate || {};
     return {
-      id,
-      benchmarks: benchmarks.length ? benchmarks : PAPER_BENCHMARKS,
-      positions: row.positions || row.holdings || [],
+      sleeve: id,
+      label: row.label || `紙上倉 ${id}`,
+      status: row.status || '',
+      asOf: row.as_of || '',
+      capital: finiteOrNull(row.capital_twd),
+      equity: finiteOrNull(row.equity_twd),
+      cash: finiteOrNull(row.cash_twd),
+      cashPct: finiteOrNull(row.cash_pct),
+      returnPct: finiteOrNull(row.return_pct),
+      drawdownPct: finiteOrNull(row.drawdown_pct),
+      maxDdPct: finiteOrNull(row.max_dd_pct),
+      tradingDays: row.trading_days_label || '',
+      annualizedPct: finiteOrNull(row.annualized_pct),
+      annualizedTarget: finiteOrNull(row.annualized_target_pct),
+      annualizedOk: row.annualized_ok === true,
+      vs0050: finiteOrNull(row.vs_0050_pp),
+      vs631: finiteOrNull(row.vs_00631L_pp),
+      flags: row.flags || [],
+      gate: {
+        target: finiteOrNull(gate.target != null ? gate.target : gate.gate_target_pct),
+        minTradingDays: finiteOrNull(gate.min_trading_days),
+        goLive: gate.go_live_allowed === true,
+        checks: (gate.checks || []).map((check) => ({
+          label: check.label || '',
+          current: check.current == null ? '' : String(check.current),
+          ok: check.ok === true,
+        })),
+      },
+      positions: row.positions || [],
+      series: row.series || [],
+      present: rows.some((item) => String(item.sleeve) === id),
     };
   });
+  const benchmarks = {};
+  for (const [key, value] of Object.entries(data.benchmarks || {})) {
+    const symbol = benchmarkSymbol((value && value.symbol) || key);
+    if (!symbol) continue;
+    benchmarks[symbol] = {
+      symbol,
+      asOf: (value && value.as_of) || '',
+      returnPct: finiteOrNull(value && value.return_pct),
+      maxDdPct: finiteOrNull(value && value.max_dd_pct),
+      series: (value && value.series) || [],
+    };
+  }
+  return {
+    mode: data.mode || 'paper',
+    note: data.note || '模擬倉，與實際持倉完全分開，不計入淨值與配置。',
+    sleeves,
+    benchmarks,
+  };
 }

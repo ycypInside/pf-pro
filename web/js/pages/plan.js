@@ -64,7 +64,7 @@ function planSection(result) {
     : [];
   return h('section', { class: 'card' },
     h('h2', {}, '淨值計畫'),
-    pathNote(pathProgress(tracks, data.net_worth_twd)),
+    pathNote(pathProgress(data)),
     yiNote(yiTrack(tracks)),
     data.note ? h('p', { class: 'hint' }, data.note) : null,
     series.length

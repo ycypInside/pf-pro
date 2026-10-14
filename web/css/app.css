@@ -505,13 +505,20 @@ dialog.sheet::backdrop { background: rgba(22, 32, 28, 0.45); }
 .path-fill { display: block; height: 100%; background: #f6f1e6; }
 .decision { padding: 8px 0; border-top: 1px solid var(--line); min-width: 0; }
 .decision p { margin: 0; }
-.decision-exit { border-left: 3px solid var(--red); padding-left: 8px; }
-.decision-dca, .decision-ticket { border-left: 3px solid var(--amber); padding-left: 8px; }
-.decision-stale { border-left: 3px solid var(--muted); padding-left: 8px; }
+.decision-exit_line { border-left: 3px solid var(--red); padding-left: 8px; }
+.decision-dca_paused { border-left: 3px solid var(--amber); padding-left: 8px; }
+.decision-stale_quote { border-left: 3px solid var(--muted); padding-left: 8px; }
+.card.paper { background: #f7f1e4; border: 1px dashed #8a5a12; }
 .paper-banner { margin-bottom: 8px; }
+.paper-compare { margin: 8px 0; }
+.paper-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; margin: 6px 0; }
+.paper-metrics p { margin: 0; }
 .paper-sleeve { padding: 10px 0; border-top: 1px dashed var(--line); }
 .paper-sleeve h3 { margin: 0 0 4px; color: var(--ink); }
-.paper-pos { margin: 4px 0 0; }
+.paper-checks { margin: 6px 0; padding: 0; list-style: none; }
+.paper-checks li { margin: 2px 0; }
+.paper-pos { margin: 6px 0 0; }
+.paper-pos summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; }
 .dca-item { min-width: 0; }
 .dca-item .btn { width: 100%; margin: 0 0 8px; }
 .dca-item .acct-amt, .plan-track .acct-amt {
