@@ -255,8 +255,12 @@ test.beforeEach(async ({ page }) => {
       });
       return;
     }
-    const q = new URL(request.url()).searchParams.get('q') || '';
-    const body = gets[q] || { ok: false, error: 'unknown q' };
+    const url = new URL(request.url());
+    const q = url.searchParams.get('q') || '';
+    let body = gets[q] || { ok: false, error: 'unknown q' };
+    if (q === 'chart' && url.searchParams.get('asset') === '4938') {
+      body = { ...gets.chart, asset_id: '4938', symbol: '4938', name: '和碩', source: 'yahoo' };
+    }
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -314,9 +318,27 @@ test('總覽 shows net worth and quick entry', async ({ page }) => {
   await page.getByRole('button', { name: /玉山銀行/ }).click();
   await expect(page.getByRole('article').getByText('玉山銀行台幣活存')).toBeVisible();
   await page.getByRole('button', { name: /元大台灣50/ }).click();
-  await expect(page.getByText('價格來源：已儲存淨值')).toBeVisible();
+  const sheet = page.getByRole('dialog');
+  await expect(sheet.getByText('價格來源：已儲存淨值')).toBeVisible();
+  await expect(sheet.getByRole('heading', { name: 'Levels' })).toBeVisible();
+  await expect(sheet.getByText('目前位於支撐 170.00 與壓力 184.00 之間，站上 MA20')).toBeVisible();
+  await expect(sheet.getByText('近期高點，接近時可考慮分批獲利、有效突破則可能轉為支撐')).toBeVisible();
+  await expect(sheet.getByText('186.00')).toBeVisible();
+  await expect(sheet.getByText('現價')).toBeVisible();
+  await expect(sheet.getByText('技術指標僅供參考，不構成投資建議')).toBeVisible();
+  const sheetOverflow = await sheet.evaluate((node) => node.scrollWidth - node.clientWidth);
+  expect(sheetOverflow).toBeLessThanOrEqual(1);
   await page.getByRole('button', { name: 'K 線' }).click();
   await page.getByRole('button', { name: '關閉' }).click();
+  await page.getByRole('button', { name: /和碩/ }).click();
+  const pegatron = page.getByRole('dialog');
+  await expect(pegatron.getByText('目前位於支撐 170.00 與壓力 184.00 之間，價格高於 MA20')).toBeVisible();
+  await expect(pegatron.getByText('獲利')).toHaveCount(0);
+  await expect(pegatron.getByText('停損')).toHaveCount(0);
+  await expect(pegatron.getByText('布局')).toHaveCount(0);
+  await expect(pegatron.getByText('null', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: '關閉' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await fits(page, '總覽');
 });
 

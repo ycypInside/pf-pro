@@ -1,7 +1,8 @@
 import { tryGet } from '../api.js';
-import { h } from '../dom.js';
+import { h, mount } from '../dom.js';
 import { formatMoney, formatPct, formatQty, formatTwd } from '../format.js';
 import { groupHoldings, joinHoldings, quoteTone, sortHoldings } from '../groups.js';
+import { formatLevel, levelLadder } from '../levels.js';
 import { paintChart, rangeMarker } from '../price-chart.js';
 
 const SORTS = [['value', '市值'], ['change', '漲跌'], ['pl', '損益'], ['name', '名稱']];
@@ -114,7 +115,7 @@ async function openDetail(row) {
     chartButton('line', '折線'),
     chartButton('candle', 'K 線'));
   const range = rangeMarker(data.levels, data.rows && data.rows.length ? data.rows[data.rows.length - 1].c : row.price);
-  body.append(
+  mount(body,
     h('p', { class: 'muted' }, `${data.symbol || row.symbol} · ${formatQty(row.quantity)}`),
     data.source === 'stored' ? h('p', { class: 'hint' }, '價格來源：已儲存淨值') : null,
     tools,
@@ -125,7 +126,8 @@ async function openDetail(row) {
       h('span', {}, h('i', { class: 'swatch', style: 'background:#1f2a5c' }), 'MA60')),
     range ? h('div', {},
       h('p', { class: 'muted' }, `52 週 ${formatMoney(range.low, row.currency)} – ${formatMoney(range.high, row.currency)}`),
-      h('div', { class: 'alloc-track' }, h('span', { class: 'alloc-target', style: `left:${range.left}` }))) : null);
+      h('div', { class: 'alloc-track' }, h('span', { class: 'alloc-target', style: `left:${range.left}` }))) : null,
+    levelsSection(data));
   paint();
 
   function chartButton(id, label) {
@@ -145,4 +147,26 @@ async function openDetail(row) {
   function paint() {
     requestAnimationFrame(() => paintChart(canvas, data, mode));
   }
+}
+
+function levelsSection(payload) {
+  const ladder = levelLadder(payload);
+  if (!ladder.rows.length) return null;
+  return h('section', { class: 'levels' },
+    h('h3', {}, 'Levels'),
+    h('p', { class: 'level-summary' }, ladder.summary),
+    h('table', { class: 'level-table' },
+      h('caption', { class: 'sr' }, 'Levels'),
+      h('thead', {}, h('tr', {},
+        h('th', { scope: 'col' }, '價位'),
+        h('th', { scope: 'col' }, '價格'),
+        h('th', { scope: 'col' }, '距離'))),
+      h('tbody', {}, ladder.rows.flatMap((item) => [
+        h('tr', { class: item.current ? 'level-now' : '' },
+          h('th', { scope: 'row' }, item.label),
+          h('td', { class: 'num' }, formatLevel(item.price)),
+          h('td', { class: 'num' }, item.current ? '—' : formatPct(item.distance))),
+        h('tr', { class: 'level-note' }, h('td', { colspan: '3' }, item.note)),
+      ]))),
+    h('p', { class: 'hint' }, ladder.disclaimer));
 }
