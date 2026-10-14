@@ -1,5 +1,5 @@
 import { tryGet } from '../api.js';
-import { h } from '../dom.js';
+import { h, mount } from '../dom.js';
 import { formatMoney, formatPct, formatQty, formatTwd } from '../format.js';
 import { groupHoldings, joinHoldings, quoteTone, sortHoldings } from '../groups.js';
 import { formatLevel, levelLadder } from '../levels.js';
@@ -115,7 +115,7 @@ async function openDetail(row) {
     chartButton('line', '折線'),
     chartButton('candle', 'K 線'));
   const range = rangeMarker(data.levels, data.rows && data.rows.length ? data.rows[data.rows.length - 1].c : row.price);
-  body.append(
+  mount(body,
     h('p', { class: 'muted' }, `${data.symbol || row.symbol} · ${formatQty(row.quantity)}`),
     data.source === 'stored' ? h('p', { class: 'hint' }, '價格來源：已儲存淨值') : null,
     tools,

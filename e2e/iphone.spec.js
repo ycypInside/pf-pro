@@ -336,7 +336,9 @@ test('總覽 shows net worth and quick entry', async ({ page }) => {
   await expect(pegatron.getByText('獲利')).toHaveCount(0);
   await expect(pegatron.getByText('停損')).toHaveCount(0);
   await expect(pegatron.getByText('布局')).toHaveCount(0);
+  await expect(pegatron.getByText('null', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: '關閉' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await fits(page, '總覽');
 });
 
