@@ -496,6 +496,7 @@ dialog.sheet::backdrop { background: rgba(22, 32, 28, 0.45); }
 }
 .plan-track p, .dca-item p, .alert p, .alert strong, .rule p, .decision p, .card-row p, .paper-sleeve p { overflow-wrap: anywhere; }
 .estimate { color: var(--muted); }
+.swr { margin: 0 0 8px; }
 .hero .day-change { margin: 0 0 8px; color: #f6f1e6; }
 .hero .day-change.down { color: #f3c7c0; }
 .hero .day-change.up { color: #d7f0e4; }

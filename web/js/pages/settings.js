@@ -1,7 +1,8 @@
 import { apiGet, clearConfig, hasConfig, loadConfig, saveConfig, tryGet } from '../api.js';
+import { cacheKey, fetchBundle, freshnessNote, partsFromEnvelope, readCache, staleView } from '../bundle.js';
 import { h } from '../dom.js';
 import { policyLines } from '../groups.js';
-import { explainError, validateEndpoint } from '../money.js';
+import { explainError, taipeiMonth, validateEndpoint } from '../money.js';
 
 export function renderSettings(main, ctx) {
   const saved = loadConfig();
@@ -92,22 +93,35 @@ export function renderSettings(main, ctx) {
   }
 
   async function loadPolicy(box, pageCtx) {
-    box.append(h('p', { class: 'muted' }, '讀取配置政策…'));
-    const [settingsR, marketR] = await Promise.all([tryGet('settings'), tryGet('market')]);
+    const month = taipeiMonth();
+    const names = ['market'];
+    const stored = readCache(cacheKey('bundle', names, month));
+    if (stored) showPolicy(box, { ok: false }, partsFromEnvelope(stored.body, names).market, staleView(stored.savedAt));
+    else box.append(h('p', { class: 'muted' }, '讀取配置政策…'));
+    const [settingsR, loaded] = await Promise.all([
+      tryGet('settings'),
+      fetchBundle(tryGet, names, {}, { month, token: loadConfig().token }),
+    ]);
     if (!pageCtx.alive()) return;
+    showPolicy(box, settingsR, loaded.parts.market, null);
+  }
+
+  function showPolicy(box, settingsR, marketR, meta) {
     const settings = settingsR.ok && settingsR.data.settings ? settingsR.data.settings : null;
     const policy = (marketR.ok && marketR.data.policy)
       || (settings && settings.target_policy)
       || null;
     const lines = policyLines(policy, settings);
-    box.replaceChildren(h('section', { class: 'card' },
+    const section = h('section', { class: 'card' },
       h('h2', {}, '配置政策'),
       h('p', { class: 'hint' }, '唯讀。目標會隨市場情緒在上下限之間移動。'),
       lines.length
         ? h('dl', { class: 'split' }, lines.map((line) => h('div', {},
           h('dt', {}, line.label),
           h('dd', {}, line.text))))
-        : h('p', { class: 'muted' }, '還沒有讀到 target_policy。')));
+        : h('p', { class: 'muted' }, '還沒有讀到 target_policy。'));
+    const note = freshnessNote(meta);
+    box.replaceChildren(...[note, section].filter(Boolean));
   }
 
   function wipe() {

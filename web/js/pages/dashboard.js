@@ -1,4 +1,5 @@
-import { hasConfig, tryGet } from '../api.js';
+import { hasConfig, loadConfig, tryGet } from '../api.js';
+import { cacheKey, fetchOverview, freshnessNote, readCache, staleView, viewFromOverview } from '../bundle.js';
 import { h, mount } from '../dom.js';
 import { formatPct, formatRate, formatTwd } from '../format.js';
 import { kindLabel } from '../labels.js';
@@ -15,11 +16,16 @@ export async function renderDashboard(main, ctx) {
     main.append(needConfig(ctx));
     return;
   }
-  main.append(h('p', { class: 'muted' }, '讀取中…'));
   const month = taipeiMonth();
-  const loaded = await loadOverview(month);
-  const { accountsR, balancesR, incomeR, checksR, pricesR, holdingsR, quotesR, adviceR, alertsR, planR, decisionsR } = loaded;
+  const stored = readCache(cacheKey('overview', [], month));
+  if (stored) paint(viewFromOverview(stored.body), staleView(stored.savedAt));
+  else main.append(h('p', { class: 'muted' }, '讀取中…'));
+  const loaded = await fetchOverview(month, tryGet, { token: loadConfig().token });
   if (!ctx.alive()) return;
+  paint(loaded, null);
+
+  function paint(loadedView, meta) {
+  const { accountsR, balancesR, incomeR, checksR, pricesR, holdingsR, quotesR, adviceR, alertsR, planR, decisionsR } = loadedView;
   main.replaceChildren();
   const fatal = [accountsR, balancesR, incomeR, checksR].find((item) => !item.ok);
   if (fatal && fatal.error && fatal.error.payload && fatal.error.payload.error === 'unauthorized') {
@@ -52,6 +58,7 @@ export async function renderDashboard(main, ctx) {
   const path = pathProgress(planData);
 
   mount(main,
+    freshnessNote(meta),
     section('待您決定', decisionsBody(decisions)),
     h('section', { class: 'hero' },
       h('div', { class: 'hero-top' },
@@ -80,6 +87,7 @@ export async function renderDashboard(main, ctx) {
     section('持倉', renderHoldings(holdingsR.ok ? (holdingsR.data.holdings || holdings) : holdings, quoteBook, names)),
     section('報價與最後估值日', pricesR.ok ? priceBlock(pricesR.data) : failNote(pricesR, '報價')),
     section('資料檢查', checksR.ok ? checkBlock(checksR.data.warnings || []) : failNote(checksR)));
+  }
 }
 
 function templateChips(templates, names, ctx) {
@@ -92,65 +100,6 @@ function templateChips(templates, names, ctx) {
       onClick: () => ctx.go('entry', entryQuery(item)),
     }, text);
   }));
-}
-
-async function loadOverview(month) {
-  const [summary, balances, quotes, advice, holdings, alerts, plan, decisions] = await Promise.all([
-    tryGet('summary', { from: month.from, to: month.to }),
-    tryGet('balances'),
-    tryGet('quotes'),
-    tryGet('advice'),
-    tryGet('holdings'),
-    tryGet('alerts'),
-    tryGet('plan'),
-    tryGet('decisions'),
-  ]);
-  if (summary.ok) {
-    const data = summary.data;
-    const balanceData = balances.ok
-      ? { institutions: [], ...balances.data, net_worth: balances.data.net_worth || data.net_worth }
-      : { balances: data.balances || [], net_worth: data.net_worth, institutions: [] };
-    return {
-      accountsR: { ok: true, data: { accounts: data.accounts || [] } },
-      balancesR: { ok: true, data: balanceData },
-      incomeR: { ok: true, data: { report: data.report } },
-      checksR: { ok: true, data: { warnings: data.warnings || [] } },
-      pricesR: { ok: true, data: { quotes: data.quotes || [], last_valuations: data.last_valuations || [], stale: data.stale || [] } },
-      holdingsR: holdings.ok ? holdings : { ok: true, data: { holdings: data.holdings || [] } },
-      quotesR: quotes,
-      adviceR: advice,
-      alertsR: alerts,
-      planR: plan,
-      decisionsR: decisions,
-    };
-  }
-  if (summary.error && summary.error.message === 'unknown q') {
-    const [accountsR, balancesR, incomeR, checksR, pricesR, holdingsR] = await Promise.all([
-      tryGet('accounts'),
-      tryGet('balances'),
-      tryGet('income_expense', { from: month.from, to: month.to }),
-      tryGet('checks'),
-      tryGet('prices'),
-      tryGet('holdings'),
-    ]);
-    return {
-      accountsR, balancesR, incomeR, checksR, pricesR, holdingsR, quotesR: quotes, adviceR: advice, alertsR: alerts,
-      planR: plan, decisionsR: decisions,
-    };
-  }
-  return {
-    accountsR: summary,
-    balancesR: summary,
-    incomeR: summary,
-    checksR: summary,
-    pricesR: summary,
-    holdingsR: summary,
-    quotesR: quotes,
-    adviceR: advice,
-    alertsR: alerts,
-    planR: plan,
-    decisionsR: decisions,
-  };
 }
 
 function decisionsBody(decisions) {

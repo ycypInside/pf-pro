@@ -1,7 +1,8 @@
-import { hasConfig, tryGet } from '../api.js';
+import { hasConfig, loadConfig, tryGet } from '../api.js';
+import { cacheKey, fetchBundle, freshnessNote, partsFromEnvelope, readCache, staleView } from '../bundle.js';
 import { h, mount } from '../dom.js';
 import { formatMoney, formatPct } from '../format.js';
-import { explainError } from '../money.js';
+import { explainError, taipeiMonth } from '../money.js';
 import { cardViews } from '../p1.js';
 
 export async function renderCards(main, ctx) {
@@ -11,13 +12,19 @@ export async function renderCards(main, ctx) {
       h('button', { type: 'button', class: 'btn primary', onClick: () => ctx.go('settings') }, '前往設定')));
     return;
   }
-  main.append(h('p', { class: 'muted' }, '讀取中…'));
-  const [cardsR, quotesR, alertsR] = await Promise.all([
-    tryGet('holding_cards'),
-    tryGet('quotes'),
-    tryGet('alerts'),
-  ]);
+  const month = taipeiMonth();
+  const names = ['holding_cards', 'quotes', 'alerts'];
+  const stored = readCache(cacheKey('bundle', names, month));
+  if (stored) paint(partsFromEnvelope(stored.body, names), staleView(stored.savedAt));
+  else main.append(h('p', { class: 'muted' }, '讀取中…'));
+  const loaded = await fetchBundle(tryGet, names, {}, { month, token: loadConfig().token });
   if (!ctx.alive()) return;
+  paint(loaded.parts, null);
+
+  function paint(parts, meta) {
+  const cardsR = parts.holding_cards;
+  const quotesR = parts.quotes;
+  const alertsR = parts.alerts;
   main.replaceChildren();
   if (!cardsR.ok) {
     main.append(h('section', { class: 'card' },
@@ -31,12 +38,14 @@ export async function renderCards(main, ctx) {
     alertsR.ok ? alertsR.data.alerts : [],
   );
   mount(main,
+    freshnessNote(meta),
     h('section', { class: 'card' },
       h('h2', {}, '持股卡'),
       h('p', { class: 'hint' }, '出場線、確認天數與論點檢討日。檢討用，不是操作單。'),
       views.length
         ? h('div', {}, views.map(cardArticle))
         : h('p', { class: 'muted' }, '還沒有持股卡。')));
+  }
 }
 
 function cardArticle(card) {
