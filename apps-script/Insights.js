@@ -58,6 +58,8 @@ function yahooSymbol_(asset) {
   var cls = asset.asset_class;
   if (!sym || cls === 'fund' || cls === 'bond' || cls === 'other') return '';
   if (asset.currency === 'TWD') {
+    var m = /^TW-([0-9A-Z]+)$/.exec(String(asset.asset_id || ''));
+    if (m) return m[1] + '.TW';
     if (/^\d{2,3}$/.test(sym)) sym = '00' + sym;
     return sym + '.TW';
   }
@@ -355,7 +357,7 @@ function advicePayload_() {
   });
   Object.keys(byAsset).forEach(function (k) {
     var w = byAsset[k].v / total;
-    if (w > pol.single_name_max) add('warn', '個股集中：' + byAsset[k].name + '（' + k + '）', '單一個股約 ' + pct(w) + '，高於 ' + pct(pol.single_name_max) + ' 的上限，可考慮分批降低。' + (k === PF_EMPLOYER_SYMBOL && pegatronPreEarnings_() ? '（目前接近財報公布前，這段時間不建議調整 4938）' : ''), 'concentration');
+    if (w > pol.single_name_max) add('warn', '個股集中：' + byAsset[k].name + '（' + k + '）', '單一個股約 ' + pct(w) + '，高於 ' + pct(pol.single_name_max) + ' 的上限，可考慮分批降低。' + (String(k) === PF_EMPLOYER_SYMBOL && pegatronPreEarnings_() ? '（目前接近財報公布前，這段時間不建議調整 4938）' : ''), 'concentration');
   });
   // Drift vs target
   (alloc.rows || []).forEach(function (r) {
@@ -364,9 +366,9 @@ function advicePayload_() {
     var hint = r.bucket === 'cash' && r.drift < 0 ? '可考慮讓新收入先留在現金，補足緩衝。'
       : r.bucket === 'stock' && r.drift > 0 ? (pol.dca_exempt_enabled
         ? '可考慮暫停加碼與單筆投入；核心定額照常扣款' + (coreList_(pol).length ? '（' + coreList_(pol).join('、') + '）' : '') + '。'
-        : '可考慮從漲幅大的部位分批獲利了結，或暫停新的股票投入（不含增加 4938）。')
+        : '可考慮從漲幅大的部位分批獲利了結，或暫停新的股票投入。')
       : r.bucket === 'bond' && r.drift > 0 ? '債券比例偏高，到期或配息時可轉回其他資產。'
-      : r.bucket === 'stock' && r.drift < 0 ? '股票比例偏低，可考慮分批投入大盤型 ETF（不含 4938）。' : '';
+      : r.bucket === 'stock' && r.drift < 0 ? '股票比例偏低，可考慮分批投入大盤型 ETF。' : '';
     add('info', r.label + '比例' + dir + '目標', '目前 ' + pct(r.actual_weight) + '，目標 ' + pct(r.target_weight) + '（容許 ±' + alloc.band_pct + '%）。' + hint, 'drift');
   });
   // Cash buffer

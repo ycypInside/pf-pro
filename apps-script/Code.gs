@@ -101,6 +101,10 @@ function routeGet_(p) {
     case 'chart': return chartPayload_(String(p.asset || p.symbol || ''));
     case 'advice': return advicePayload_();
     case 'finance_summary': return financeSummaryPayload_();
+    case 'plan': return planPayload_();
+    case 'dca': return dcaPayload_();
+    case 'holding_cards': return holdingCardsPayload_();
+    case 'alerts': return alertsPayload_();
     case 'income_expense':
     case 'incomeexpense': return { ok: true, report: incomeExpense_(p.from, p.to) };
     case 'checks': return { ok: true, warnings: dailyChecks_() };
@@ -163,6 +167,23 @@ var ACTIONS = {
   },
 
   /** Stores only the SHA-256 of a read-only token. Full token required (POST). */
+  ensure_p1_sheets: function (d, ctx) {
+    var res = ensureP1Sheets_();
+    audit_(ctx, 'config_change', 'Settings', 'ensure_p1_sheets', null, res);
+    return { ids: res.map(function (r) { return r.sheet; }), sheets: res };
+  },
+  upsert_plan: function (d, ctx) { return upsertP1_('Plan', d.rows, ctx); },
+  upsert_dca: function (d, ctx) { return upsertP1_('DCA', d.rows, ctx); },
+  upsert_holding_rules: function (d, ctx) { return upsertP1_('Holding_Rules', d.rows, ctx); },
+  mark_dca_debited: function (d, ctx) {
+    if (!d.dca_id || !isDate_(d.date)) fail_('V1', 'dca_id and date (YYYY-MM-DD) required');
+    return upsertP1_('DCA', [{ dca_id: d.dca_id, last_debit_date: d.date }], ctx);
+  },
+  set_rule_status: function (d, ctx) {
+    if (!d.rule_key || ['active', 'paused', 'retired'].indexOf(d.status) < 0) fail_('V1', 'rule_key and status active|paused|retired required');
+    return upsertP1_('Holding_Rules', [{ rule_key: d.rule_key, status: d.status }], ctx);
+  },
+
   set_readonly_token_hash: function (d, ctx) {
     var h = String(d.sha256 || '').trim().toLowerCase();
     if (!/^[0-9a-f]{64}$/.test(h)) fail_('V1', 'sha256 must be 64 hex chars');

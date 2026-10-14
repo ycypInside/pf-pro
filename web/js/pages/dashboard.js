@@ -6,6 +6,7 @@ import { explainError, netWorth, splitCategories, taipeiMonth, withTwd } from '.
 import { entryQuery, readTemplates } from '../prefs.js';
 import { renderAccountGroups } from './accounts.js';
 import { adviceCard } from './advice.js';
+import { alertsBlock } from './alerts.js';
 import { renderHoldings } from './holdings.js';
 
 export async function renderDashboard(main, ctx) {
@@ -16,7 +17,7 @@ export async function renderDashboard(main, ctx) {
   main.append(h('p', { class: 'muted' }, '讀取中…'));
   const month = taipeiMonth();
   const loaded = await loadOverview(month);
-  const { accountsR, balancesR, incomeR, checksR, pricesR, holdingsR, quotesR, adviceR } = loaded;
+  const { accountsR, balancesR, incomeR, checksR, pricesR, holdingsR, quotesR, adviceR, alertsR } = loaded;
   if (!ctx.alive()) return;
   main.replaceChildren();
   const fatal = [accountsR, balancesR, incomeR, checksR].find((item) => !item.ok);
@@ -60,6 +61,7 @@ export async function renderDashboard(main, ctx) {
     templates.length ? section('再記一筆', templateChips(templates, names, ctx)) : null,
     missingFx(summary),
     adviceCard(adviceR.ok ? adviceR.data : null, !adviceR.ok),
+    section('檢討提醒', alertsBlock(alertsR)),
     section('帳戶餘額', balancesR.ok
       ? renderAccountGroups(balancesR.data.balances || rawBalances, accounts, balancesR.data.institutions || [], localStorage)
       : renderAccountGroups(rawBalances, accounts, [], localStorage)),
@@ -82,12 +84,13 @@ function templateChips(templates, names, ctx) {
 }
 
 async function loadOverview(month) {
-  const [summary, balances, quotes, advice, holdings] = await Promise.all([
+  const [summary, balances, quotes, advice, holdings, alerts] = await Promise.all([
     tryGet('summary', { from: month.from, to: month.to }),
     tryGet('balances'),
     tryGet('quotes'),
     tryGet('advice'),
     tryGet('holdings'),
+    tryGet('alerts'),
   ]);
   if (summary.ok) {
     const data = summary.data;
@@ -103,6 +106,7 @@ async function loadOverview(month) {
       holdingsR: holdings.ok ? holdings : { ok: true, data: { holdings: data.holdings || [] } },
       quotesR: quotes,
       adviceR: advice,
+      alertsR: alerts,
     };
   }
   if (summary.error && summary.error.message === 'unknown q') {
@@ -114,7 +118,7 @@ async function loadOverview(month) {
       tryGet('prices'),
       tryGet('holdings'),
     ]);
-    return { accountsR, balancesR, incomeR, checksR, pricesR, holdingsR, quotesR: quotes, adviceR: advice };
+    return { accountsR, balancesR, incomeR, checksR, pricesR, holdingsR, quotesR: quotes, adviceR: advice, alertsR: alerts };
   }
   return {
     accountsR: summary,
@@ -125,6 +129,7 @@ async function loadOverview(month) {
     holdingsR: summary,
     quotesR: quotes,
     adviceR: advice,
+    alertsR: alerts,
   };
 }
 
