@@ -1,4 +1,5 @@
-import { hasConfig, tryGet } from '../api.js';
+import { hasConfig, loadConfig, tryGet } from '../api.js';
+import { cacheKey, fetchBundle, freshnessNote, partsFromEnvelope, readCache, staleView } from '../bundle.js';
 import { lineChart } from '../chart.js';
 import { h, mount } from '../dom.js';
 import { formatMoney, formatPct, formatTwd } from '../format.js';
@@ -26,9 +27,18 @@ export async function renderPlan(main, ctx) {
       h('button', { type: 'button', class: 'btn primary', onClick: () => ctx.go('settings') }, '前往設定')));
     return;
   }
-  main.append(h('p', { class: 'muted' }, '讀取中…'));
-  const [planR, dcaR] = await Promise.all([tryGet('plan'), tryGet('dca')]);
+  const month = taipeiMonth();
+  const names = ['plan', 'dca'];
+  const stored = readCache(cacheKey('bundle', names, month));
+  if (stored) paint(partsFromEnvelope(stored.body, names), staleView(stored.savedAt));
+  else main.append(h('p', { class: 'muted' }, '讀取中…'));
+  const loaded = await fetchBundle(tryGet, names, {}, { month, token: loadConfig().token });
   if (!ctx.alive()) return;
+  paint(loaded.parts, null);
+
+  function paint(parts, meta) {
+  const planR = parts.plan;
+  const dcaR = parts.dca;
   main.replaceChildren();
   if (denied(planR) || denied(dcaR)) {
     main.append(
@@ -38,7 +48,8 @@ export async function renderPlan(main, ctx) {
       h('button', { type: 'button', class: 'btn', onClick: () => ctx.go('settings') }, '前往設定'));
     return;
   }
-  mount(main, planSection(planR), dcaSection(dcaR));
+  mount(main, freshnessNote(meta), planSection(planR), dcaSection(dcaR));
+  }
 }
 
 function denied(result) {

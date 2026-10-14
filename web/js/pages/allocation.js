@@ -1,7 +1,8 @@
-import { hasConfig, tryGet } from '../api.js';
+import { hasConfig, loadConfig, tryGet } from '../api.js';
+import { cacheKey, fetchBundle, freshnessNote, partsFromEnvelope, readCache, staleView } from '../bundle.js';
 import { h } from '../dom.js';
 import { formatPct, formatTwd } from '../format.js';
-import { explainError } from '../money.js';
+import { explainError, taipeiMonth } from '../money.js';
 import { adviceCard } from './advice.js';
 
 export async function renderAllocation(main, ctx) {
@@ -11,13 +12,19 @@ export async function renderAllocation(main, ctx) {
       h('button', { type: 'button', class: 'btn primary', onClick: () => ctx.go('settings') }, '前往設定')));
     return;
   }
-  main.append(h('p', { class: 'muted' }, '讀取中…'));
-  const [result, marketR, adviceR] = await Promise.all([
-    tryGet('allocation'),
-    tryGet('market'),
-    tryGet('advice'),
-  ]);
+  const month = taipeiMonth();
+  const names = ['allocation', 'market', 'advice'];
+  const stored = readCache(cacheKey('bundle', names, month));
+  if (stored) paint(partsFromEnvelope(stored.body, names), staleView(stored.savedAt));
+  else main.append(h('p', { class: 'muted' }, '讀取中…'));
+  const loaded = await fetchBundle(tryGet, names, {}, { month, token: loadConfig().token });
   if (!ctx.alive()) return;
+  paint(loaded.parts, null);
+
+  function paint(parts, meta) {
+  const result = parts.allocation;
+  const marketR = parts.market;
+  const adviceR = parts.advice;
   main.replaceChildren();
   if (!result.ok) {
     main.append(h('div', { class: 'banner err', role: 'alert' },
@@ -31,6 +38,7 @@ export async function renderAllocation(main, ctx) {
   const sentiment = data.sentiment || (marketR.ok ? marketR.data.sentiment : null);
   const indicators = marketR.ok ? (marketR.data.indicators || {}) : {};
   mount(main,
+    freshnessNote(meta),
     valuationTags(data),
     sentimentCard(sentiment, indicators),
     adviceCard(adviceR.ok ? adviceR.data : null, !adviceR.ok),
@@ -58,6 +66,7 @@ export async function renderAllocation(main, ctx) {
     (data.missing_fx || []).length
       ? h('div', { class: 'banner dup', role: 'status' }, h('p', {}, `${data.missing_fx.join('、')} 缺匯率，未計入配置。`))
       : null);
+  }
 }
 
 function mount(parent, ...nodes) {

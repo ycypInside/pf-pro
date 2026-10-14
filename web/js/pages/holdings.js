@@ -1,4 +1,5 @@
 import { tryGet } from '../api.js';
+import { chartQuery } from '../bundle.js';
 import { h, mount } from '../dom.js';
 import { formatMoney, formatPct, formatQty, formatTwd } from '../format.js';
 import { groupHoldings, joinHoldings, quoteTone, sortHoldings } from '../groups.js';
@@ -113,7 +114,7 @@ async function openDetail(row) {
   dialog.showModal();
   body.append(h('p', { class: 'muted' }, '讀取走勢…'));
   const [result, cardsResult] = await Promise.all([
-    tryGet('chart', { asset: row.asset_id }),
+    tryGet('chart', chartQuery(row)),
     tryGet('holding_cards'),
   ]);
   body.replaceChildren();

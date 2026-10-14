@@ -1,4 +1,5 @@
 import { isTransientError, shouldRetryGet, shouldRetryPost, validateEndpoint, withPostQuery } from './money.js';
+import { afterWrite, clearCache } from './swr.js';
 
 const URL_KEY = 'pfpro.apiUrl';
 const TOKEN_KEY = 'pfpro.token';
@@ -11,13 +12,18 @@ export function loadConfig() {
 }
 
 export function saveConfig(apiUrl, token) {
-  localStorage.setItem(URL_KEY, apiUrl.trim());
-  localStorage.setItem(TOKEN_KEY, token.trim());
+  const nextUrl = apiUrl.trim();
+  const nextToken = token.trim();
+  const prev = loadConfig();
+  localStorage.setItem(URL_KEY, nextUrl);
+  localStorage.setItem(TOKEN_KEY, nextToken);
+  if (prev.apiUrl !== nextUrl || prev.token !== nextToken) clearCache();
 }
 
 export function clearConfig() {
   localStorage.removeItem(URL_KEY);
   localStorage.removeItem(TOKEN_KEY);
+  clearCache();
 }
 
 export function hasConfig() {
@@ -145,9 +151,9 @@ export async function apiPost(action, data, requestId, config) {
   for (let attempt = 0; attempt < waits.length; attempt += 1) {
     if (waits[attempt]) await sleep(waits[attempt]);
     last = await apiPostOnce(url, body);
-    if (!shouldRetryPost(last, attempt)) return last;
+    if (!shouldRetryPost(last, attempt)) return afterWrite(last);
   }
-  return last;
+  return afterWrite(last);
 }
 
 async function apiPostOnce(url, body) {
