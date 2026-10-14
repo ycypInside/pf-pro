@@ -2,6 +2,7 @@ import { hasConfig, tryGet } from '../api.js';
 import { h } from '../dom.js';
 import { formatPct, formatTwd } from '../format.js';
 import { explainError } from '../money.js';
+import { adviceCard } from './advice.js';
 
 export async function renderAllocation(main, ctx) {
   if (!hasConfig()) {
@@ -11,7 +12,11 @@ export async function renderAllocation(main, ctx) {
     return;
   }
   main.append(h('p', { class: 'muted' }, '讀取中…'));
-  const result = await tryGet('allocation');
+  const [result, marketR, adviceR] = await Promise.all([
+    tryGet('allocation'),
+    tryGet('market'),
+    tryGet('advice'),
+  ]);
   if (!ctx.alive()) return;
   main.replaceChildren();
   if (!result.ok) {
@@ -23,8 +28,12 @@ export async function renderAllocation(main, ctx) {
   const data = result.data;
   const rows = data.rows || [];
   const alerts = rows.filter((row) => row.alert);
+  const sentiment = data.sentiment || (marketR.ok ? marketR.data.sentiment : null);
+  const indicators = marketR.ok ? (marketR.data.indicators || {}) : {};
   mount(main,
     valuationTags(data),
+    sentimentCard(sentiment, indicators),
+    adviceCard(adviceR.ok ? adviceR.data : null, !adviceR.ok),
     data.target_set
       ? null
       : h('div', { class: 'banner dup', role: 'status' },
@@ -73,7 +82,27 @@ function allocRow(row) {
 function suggestion(row) {
   const points = (Math.abs(Number(row.drift) || 0) * 100).toFixed(1);
   const more = Number(row.trade_twd) >= 0;
-  return `${row.label || row.bucket}${more ? '低於' : '高出'}目標 ${points} 個百分點，建議${more ? '增加' : '減少'} ${formatTwd(Math.abs(row.trade_twd))}`;
+  const label = row.label || row.bucket;
+  return `${label}目前${more ? '低於' : '高出'}目標 ${points} 個百分點，可考慮${more ? '增加' : '減少'} ${formatTwd(Math.abs(row.trade_twd))}。`;
+}
+
+function sentimentCard(sentiment, indicators) {
+  if (!sentiment && !indicators.vix && !indicators.twii) return null;
+  const heat = Math.max(0, Math.min(1, Number(sentiment && sentiment.heat) || 0));
+  const twii = indicators.twii;
+  const vix = indicators.vix;
+  const twiiText = twii
+    ? `加權${twii.above_ma60 ? '高於' : '低於'} 60 日均 ${twii.gap_ma60 == null ? '' : formatPct(twii.gap_ma60)}`.trim()
+    : '';
+  return h('section', { class: 'card' },
+    h('h2', {}, '市場情緒'),
+    h('p', { class: 'eyebrow' }, (sentiment && sentiment.label) || '—'),
+    h('div', { class: 'gauge', role: 'img', 'aria-label': `熱度 ${Math.round(heat * 100)}` },
+      h('span', { class: 'gauge-fill', style: `width:${Math.round(heat * 100)}%` })),
+    h('p', { class: 'muted' }, [
+      vix && vix.value != null ? `VIX ${Number(vix.value).toFixed(1)}` : '',
+      twiiText,
+    ].filter(Boolean).join(' · ') || '沒有市場指標。'));
 }
 
 function valuationTags(data) {

@@ -13,6 +13,7 @@ function installTriggers() {
 function dailySnapshot() {
   beginRequest_();
   if (fxNeedsFetch_(fxDate_('USDTWD'), today_())) fetchBotFxBody_();
+  try { syncMarketPrices_(); } catch (pErr) { Logger.log('price sync skipped: ' + pErr); }
   var wrote = writeSnapshot_();
   try { refreshPerfCache_(90000); }
   catch (err) { Logger.log('perf cache skipped: ' + err); }

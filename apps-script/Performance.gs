@@ -49,6 +49,12 @@ function allocationPayload_() {
     if (b.balance_twd === null || b.balance_twd === undefined || b.balance_twd === '') return;
     amounts.cash = (amounts.cash || 0) + Number(b.balance_twd);
   });
+  var market = null;
+  if (!settings.legacy) {
+    try { market = marketPayload_(); } catch (mErr) { market = null; }
+    var tot = 0; Object.keys(amounts).forEach(function (k) { tot += Number(amounts[k]) || 0; });
+    target = dynamicTarget_(targetPolicy_(), market && market.sentiment, tot ? (amounts.other || 0) / tot : 0);
+  }
   var alloc = pfAllocation(amounts, target, settings.band);
   var labels = { stock: '股票', etf: '股票', bond: '債券', cash: '現金', fund: '基金', other: '其他' };
   alloc.rows.forEach(function (row) {
@@ -63,6 +69,8 @@ function allocationPayload_() {
     band_pct: alloc.band_pct,
     target: target,
     target_set: settings.set,
+    policy: settings.legacy ? null : targetPolicy_(),
+    sentiment: market ? market.sentiment : null,
     rows: alloc.rows,
     estimated: estimated,
     stale_count: (prices.stale || []).length,
@@ -109,10 +117,17 @@ function fxHistory_(currency) {
   }).filter(function (p) { return p.date && p.value; }).sort(function (a, b) { return a.date < b.date ? -1 : 1; });
 }
 
+function bandOf_(saved) {
+  var band = Number(saved.rebalance_band_pct);
+  return (!isFinite(band) || band <= 0) ? 5 : band;
+}
+
 function targetSettings_() {
   var saved = settings_();
   var target = { stock: 0.6, bond: 0.2, cash: 0.2 };
   var set = false;
+  // v0.2: target_policy (dynamic, sentiment-adjusted) wins unless target_mode=fixed.
+  if (String(saved.target_mode || '') !== 'fixed') return { target: target, band: bandOf_(saved), set: true, legacy: false };
   if (saved.target_allocation) {
     try {
       var parsed = typeof saved.target_allocation === 'string' ? JSON.parse(saved.target_allocation) : saved.target_allocation;
@@ -121,7 +136,7 @@ function targetSettings_() {
   }
   var band = Number(saved.rebalance_band_pct);
   if (!isFinite(band) || band <= 0) band = 5;
-  return { target: target, band: band, set: set };
+  return { target: target, band: band, set: set, legacy: true };
 }
 
 function pfRate_(value) {

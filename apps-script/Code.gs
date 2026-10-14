@@ -72,7 +72,7 @@ function doGet(e) {
     // Redirected POSTs arrive here with a query token and no q. Do not answer unknown q.
     if (lostPostBody_(p)) return json_({ ok: false, error: 'parse_error', reason: 'lost_body' });
     if (p.q === 'health') return json_({ ok: true, schema_version: settings_().schema_version, at: nowIso_() });
-    var extra = [p.from || '', p.to || '', p.period || '', p.benchmark || '', p.limit || ''].join('|');
+    var extra = [p.from || '', p.to || '', p.period || '', p.benchmark || '', p.limit || '', p.asset || p.symbol || ''].join('|');
     var payload = cachedGet_(String(p.q || '') + '|' + extra, function () { return routeGet_(p); });
     // HtmlService, or a throw inside JSON.stringify, serves an HTML page. That page
     // 302s again, and a strict client counts the extra hop as a redirect loop.
@@ -92,7 +92,11 @@ function routeGet_(p) {
   switch (p.q) {
     case 'summary': return summaryPayload_(p.from, p.to);
     case 'accounts': return { ok: true, accounts: readTable_('Accounts').map(strip_) };
-    case 'balances': return balancesPayload_();
+    case 'balances': return enrichBalances_(balancesPayload_());
+    case 'market': return marketPayload_();
+    case 'quotes': return quotesPayload_();
+    case 'chart': return chartPayload_(String(p.asset || p.symbol || ''));
+    case 'advice': return advicePayload_();
     case 'income_expense':
     case 'incomeexpense': return { ok: true, report: incomeExpense_(p.from, p.to) };
     case 'checks': return { ok: true, warnings: dailyChecks_() };
