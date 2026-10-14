@@ -2,12 +2,14 @@ import { clear, h, icon } from './dom.js';
 import { renderAllocation } from './pages/allocation.js';
 import { renderDashboard } from './pages/dashboard.js';
 import { renderEntry } from './pages/entry.js';
+import { renderPlan } from './pages/plan.js';
 import { renderPerformance } from './pages/performance.js';
 import { renderRecords } from './pages/records.js';
 import { renderSettings } from './pages/settings.js';
 
 const PAGES = {
   overview: { title: '總覽', render: renderDashboard, icon: 'M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z' },
+  plan: { title: '計畫', render: renderPlan, icon: 'M4 16l4-5 3 3 6-8M5 19h14' },
   performance: { title: '績效', render: renderPerformance, icon: 'M4 19V5M4 19h16M8 15l3.2-4 2.6 2.4L18 8' },
   allocation: { title: '配置', render: renderAllocation, icon: 'M12 5a7 7 0 1 0 .01 0M12 12V5M12 12l5 3' },
   entry: { title: '記帳', render: renderEntry, icon: 'M12 5v14M5 12h14' },

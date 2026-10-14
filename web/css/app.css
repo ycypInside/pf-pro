@@ -93,7 +93,7 @@ h3 { font-size: 13px; margin: 8px 0 4px; color: var(--muted); font-weight: 600; 
 
 .lede, .hint, .muted { color: var(--muted); }
 .lede { margin-top: 0; line-height: 1.55; }
-.hint { display: block; margin-top: 4px; font-size: 12px; line-height: 1.4; }
+.hint { display: block; margin-top: 4px; font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
 .num { font-variant-numeric: tabular-nums; }
 .mono { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 12px; overflow-wrap: anywhere; }
 .ok-text { color: var(--green); margin: 0; }
@@ -307,7 +307,7 @@ input:read-only { background: #f3eee4; }
   width: min(100%, 560px);
   bottom: 0;
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(7, 1fr);
   background: rgba(251, 247, 239, 0.94);
   backdrop-filter: blur(10px);
   border-top: 1px solid var(--line);
@@ -325,7 +325,7 @@ input:read-only { background: #f3eee4; }
   min-width: 0;
   text-decoration: none;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 10px;
   line-height: 1.15;
   min-height: 48px;
   padding-top: 4px;
@@ -488,3 +488,30 @@ dialog.sheet::backdrop { background: rgba(22, 32, 28, 0.45); }
   border-radius: 99px;
   background: linear-gradient(90deg, var(--green), var(--amber), var(--red));
 }
+.plan-track p, .dca-item p, .alert p, .alert strong, .rule p { overflow-wrap: anywhere; }
+.dca-item { min-width: 0; }
+.dca-item .btn { width: 100%; margin: 0 0 8px; }
+.dca-item .acct-amt, .plan-track .acct-amt {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.alert {
+  padding: 10px 0 10px 8px;
+  border-top: 1px solid var(--line);
+  min-width: 0;
+}
+.alert p { margin: 0; }
+.alert-red { border-left: 3px solid var(--red); }
+.alert-amber { border-left: 3px solid var(--amber); }
+.alert-watch { border-left: 3px solid #1f2a5c; }
+.alert-upcoming { border-left: 3px solid #3d6b8a; }
+.alert-info { border-left: 3px solid var(--green); }
+.tag.alert-red, .tag.dca-paused_by_brake { background: var(--err); color: var(--red); }
+.tag.alert-amber, .tag.dca-pending { background: var(--dup); color: var(--amber); }
+.tag.alert-watch { background: #e7eaf4; color: #1f2a5c; }
+.tag.alert-upcoming { background: #e5f0f5; color: #24566e; }
+.tag.alert-info, .tag.dca-debited { background: var(--ok); color: var(--green-deep); }
+.rule { padding: 8px 0; border-top: 1px solid var(--line); min-width: 0; }
+.rule p { margin: 0; }

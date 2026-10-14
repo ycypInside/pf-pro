@@ -4,6 +4,7 @@ const UP = '#9c4036';
 const DOWN = '#1d6b4f';
 const MA20 = '#8a5a12';
 const MA60 = '#1f2a5c';
+const RULE = '#9c4036';
 const GRID = '#e4d8c6';
 const INK = '#667069';
 
@@ -27,11 +28,18 @@ function collect(payload) {
     const price = finite(pivot[key]);
     if (price != null) extras.push(price);
   }
-  return { rows, extras, levels };
+  const rulePrices = [];
+  for (const line of (payload && payload.rule_lines) || []) {
+    const price = finite(line && (line.price != null ? line.price : line));
+    if (price == null || price <= 0) continue;
+    extras.push(price);
+    rulePrices.push(price);
+  }
+  return { rows, extras, levels, rulePrices };
 }
 
 export function paintChart(canvas, payload, mode) {
-  const { rows, extras } = collect(payload);
+  const { rows, extras, rulePrices } = collect(payload);
   if (!canvas || !rows.length) return false;
   const width = Math.max(280, canvas.clientWidth || 320);
   const height = 220;
@@ -91,6 +99,18 @@ export function paintChart(canvas, payload, mode) {
   ctx.strokeStyle = INK;
   lines.forEach((price) => {
     if (price == null) return;
+    const y = yOf(price);
+    ctx.beginPath();
+    ctx.moveTo(pad.l, y);
+    ctx.lineTo(width - pad.r, y);
+    ctx.stroke();
+  });
+  ctx.restore();
+  ctx.save();
+  ctx.setLineDash([2, 2]);
+  ctx.strokeStyle = RULE;
+  ctx.lineWidth = 1.5;
+  (rulePrices || []).forEach((price) => {
     const y = yOf(price);
     ctx.beginPath();
     ctx.moveTo(pad.l, y);

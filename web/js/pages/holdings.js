@@ -3,6 +3,7 @@ import { h, mount } from '../dom.js';
 import { formatMoney, formatPct, formatQty, formatTwd } from '../format.js';
 import { groupHoldings, joinHoldings, quoteTone, sortHoldings } from '../groups.js';
 import { formatLevel, levelLadder } from '../levels.js';
+import { cardsForAsset, rulePriceLines, ruleTypeLabel } from '../p1.js';
 import { paintChart, rangeMarker } from '../price-chart.js';
 
 const SORTS = [['value', '市值'], ['change', '漲跌'], ['pl', '損益'], ['name', '名稱']];
@@ -105,13 +106,18 @@ async function openDetail(row) {
   dialog.addEventListener('close', () => dialog.remove());
   dialog.showModal();
   body.append(h('p', { class: 'muted' }, '讀取走勢…'));
-  const result = await tryGet('chart', { asset: row.asset_id });
+  const [result, cardsResult] = await Promise.all([
+    tryGet('chart', { asset: row.asset_id }),
+    tryGet('holding_cards'),
+  ]);
   body.replaceChildren();
   if (!result.ok) {
     body.append(h('p', { class: 'muted' }, '讀不到這檔走勢。'));
     return;
   }
   const data = result.data;
+  const cards = cardsResult.ok ? cardsForAsset(cardsResult.data.cards, row.asset_id) : [];
+  data.rule_lines = rulePriceLines(cards);
   let mode = 'line';
   const canvas = h('canvas', { class: 'price-canvas', role: 'img', 'aria-label': `${row.name} 走勢` });
   const tools = h('div', { class: 'seg two', role: 'tablist', 'aria-label': '圖形' },
@@ -126,11 +132,13 @@ async function openDetail(row) {
     h('p', { class: 'legend' },
       h('span', {}, h('i', { class: 'swatch', style: 'background:#1d6b4f' }), '價格'),
       h('span', {}, h('i', { class: 'swatch', style: 'background:#8a5a12' }), 'MA20'),
-      h('span', {}, h('i', { class: 'swatch', style: 'background:#1f2a5c' }), 'MA60')),
+      h('span', {}, h('i', { class: 'swatch', style: 'background:#1f2a5c' }), 'MA60'),
+      data.rule_lines.length ? h('span', {}, h('i', { class: 'swatch', style: 'background:#9c4036' }), '規則價位') : null),
     range ? h('div', {},
       h('p', { class: 'muted' }, `52 週 ${formatMoney(range.low, row.currency)} – ${formatMoney(range.high, row.currency)}`),
       h('div', { class: 'alloc-track' }, h('span', { class: 'alloc-target', style: `left:${range.left}` }))) : null,
-    levelsSection(data));
+    levelsSection(data),
+    rulesSection(cards));
   paint();
 
   function chartButton(id, label) {
@@ -150,6 +158,32 @@ async function openDetail(row) {
   function paint() {
     requestAnimationFrame(() => paintChart(canvas, data, mode));
   }
+}
+
+function rulesSection(cards) {
+  if (!cards.length) return null;
+  return h('section', { class: 'levels' },
+    h('h3', {}, '持股卡'),
+    cards.map((card) => h('div', {},
+      h('p', { class: 'level-summary' }, card.name || card.card_key),
+      card.note ? h('p', { class: 'hint' }, card.note) : null,
+      (card.rules || []).filter((rule) => !rule.status || rule.status === 'active').map((rule) => h('article', { class: 'rule' },
+        h('p', {}, rule.action || rule.rule_key || '規則'),
+        rule.reason ? h('p', { class: 'muted' }, rule.reason) : null,
+        h('p', { class: 'hint' }, ruleMeta(rule)))))),
+    h('p', { class: 'hint' }, '紅虛線是這張卡的價位。檢討用，不是操作單。'));
+}
+
+function ruleMeta(rule) {
+  const bits = [];
+  const level = Number(rule.level);
+  if (Number.isFinite(level)) bits.push(`價位 ${formatLevel(level)}`);
+  const pct = Number(rule.pct);
+  if (rule.pct !== '' && rule.pct != null && Number.isFinite(pct)) bits.push(`門檻 ${pct}%`);
+  if (rule.date) bits.push(rule.date);
+  const type = ruleTypeLabel(rule.type);
+  if (type) bits.push(type);
+  return bits.join(' · ');
 }
 
 function levelsSection(payload) {

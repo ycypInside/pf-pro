@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 const token = ['mock', 'ledger', 'token'].join('-');
 const apiUrl = 'https://example.com/exec';
-const nav = ['總覽', '績效', '配置', '記帳', '明細', '設定'];
+const nav = ['總覽', '計畫', '績效', '配置', '記帳', '明細', '設定'];
 
 const summary = {
   ok: true,
@@ -226,6 +226,89 @@ const gets = {
       low_52w: 140,
     },
   },
+  plan: {
+    ok: true,
+    as_of: '2026-10-14',
+    net_worth_twd: 98765432.1,
+    note: '計畫值以基期淨值、月投入與年化報酬（月複利）推算；實際值為目前淨值（含非計畫內資產）。',
+    tracks: [
+      {
+        track: 'main',
+        label: '主計畫',
+        baseline_date: '2024-01-01',
+        baseline_twd: 50000000,
+        monthly_twd: 150000,
+        cagr: 0.07,
+        milestones: [{ year: 2028, target_date: '2028-01-01', target_twd: 80000000, note: '第一個目標' }],
+        plan_now_twd: 70000000,
+        actual_twd: 98765432.1,
+        gap_twd: 28765432.1,
+        gap_pct: 0.41,
+        next_milestone: { year: 2028, target_date: '2028-01-01', target_twd: 80000000, note: '第一個目標' },
+        on_track: true,
+      },
+      {
+        track: '挑戰上億',
+        label: '挑戰上億',
+        baseline_date: '2024-01-01',
+        baseline_twd: 50000000,
+        monthly_twd: 300000,
+        cagr: 0.1,
+        milestones: [{ year: 2030, target_date: '2030-01-01', target_twd: 100000000, note: '上億' }],
+        plan_now_twd: 110000000,
+        actual_twd: 98765432.1,
+        gap_twd: -11234567.9,
+        gap_pct: -0.102,
+        next_milestone: { year: 2030, target_date: '2030-01-01', target_twd: 100000000, note: '上億' },
+        on_track: false,
+      },
+    ],
+  },
+  dca: {
+    ok: true,
+    month: '2026-10',
+    monthly_total_twd: 40000,
+    brake: { enabled: true, triggered: true, reason: '現金佔比低於煞車門檻' },
+    note: '本月狀態依 last_debit_date 判斷。',
+    items: [
+      { dca_id: 'dca-0050', name: '元大台灣50', symbol: '0050', currency: 'TWD', amount: 10000, debit_day: null, month_state: 'pending', core: true, note: '每月上限 1 萬；每月一次', status: 'active' },
+      { dca_id: 'dca-voo', name: 'VOO', symbol: 'VOO', currency: 'USD', amount: 200, debit_day: 6, month_state: 'debited', core: true, note: '每月上限 200 美元；每月一次', status: 'active', last_debit_date: '2026-10-06' },
+      { dca_id: 'dca-00646', name: '元大S&P500', symbol: '00646', currency: 'TWD', amount: 8000, debit_day: 15, month_state: 'paused_by_brake', core: true, note: '每月上限 8,000；每月一次', status: 'active' },
+      { dca_id: 'dca-bond', name: '美債基金', symbol: 'BND', currency: 'TWD', amount: 5000, debit_day: '', month_state: 'pending', core: true, note: '每月上限 5,000；每季', status: 'active' },
+    ],
+  },
+  alerts: {
+    ok: true,
+    disclaimer: '依持股卡規則與公開價格自動比對；僅為檢討提醒，不是操作單。',
+    alerts: [
+      { level: 'red', name: '元大台灣50', action: '檢視部位', reason: '收盤低於規則線', detail: '收盤 180 / 線 190' },
+      { level: 'amber', name: '和碩', action: '只做紀錄', reason: '接近財報', detail: '觀察中' },
+      { level: 'watch', name: '元大台灣50', action: '再看一天', reason: '尚未連續確認', detail: '1/2 日' },
+      { level: 'upcoming', name: '和碩', action: '日期將到', reason: '規則日期接近', detail: '2026-10-20' },
+      { level: 'info', name: '元大台灣50', action: '例行檢視', reason: '資訊型規則', detail: '提示用' },
+    ],
+  },
+  holding_cards: {
+    ok: true,
+    cards: [
+      {
+        card_key: 'tw',
+        name: '台灣50卡',
+        asset_ids: ['0050'],
+        status: 'active',
+        note: '核心部位',
+        rules: [{ rule_key: 'r1', type: 'close_below', level: 175, action: '回到這條線時檢視部位', reason: '收盤低於規則價', status: 'active' }],
+      },
+      {
+        card_key: 'peg',
+        name: '和碩卡',
+        asset_ids: ['4938'],
+        status: 'active',
+        note: '',
+        rules: [{ rule_key: 'r2', type: 'close_below', level: 90, action: '只記錄價位', reason: '接近財報前只做紀錄', status: 'active' }],
+      },
+    ],
+  },
   allocation: {
     ok: true,
     total_twd: 98765432.1,
@@ -335,6 +418,13 @@ test('總覽 shows net worth and quick entry', async ({ page }) => {
   await expect(page.getByRole('button', { name: '轉帳' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'AI 專家建議' })).toBeVisible();
   await expect(page.getByText('不構成投資建議')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '檢討提醒' })).toBeVisible();
+  await expect(page.getByText('不是操作單')).toBeVisible();
+  await expect(page.locator('article.alert-red')).toContainText('檢視部位');
+  await expect(page.locator('article.alert-amber')).toContainText('只做紀錄');
+  await expect(page.locator('article.alert-watch')).toContainText('再看一天');
+  await expect(page.locator('article.alert-upcoming')).toContainText('日期將到');
+  await expect(page.locator('article.alert-info')).toContainText('例行檢視');
   await expect(page.getByText('現金緩衝')).toBeVisible();
   await expect(page.locator('.banner.err', { hasText: '價格過期' })).toBeVisible();
   await expect(page.locator('.banner.err', { hasText: '暫停定額' })).toBeVisible();
@@ -342,7 +432,7 @@ test('總覽 shows net worth and quick entry', async ({ page }) => {
   await expect(page.getByRole('button', { name: /和碩/ }).getByText('價格 2026-08-01 · 上限 7 天')).toBeVisible();
   await expect(page.getByRole('button', { name: /元大台灣50/ }).getByText('過期', { exact: true })).toHaveCount(0);
   await expect(page.getByText('雇主持股')).toHaveCount(0);
-  await expect(page.getByText('和碩')).toBeVisible();
+  await expect(page.getByRole('button', { name: /和碩/ })).toBeVisible();
   await expect(page.getByText('玉山集團')).toHaveCount(0);
   await page.getByRole('button', { name: /玉山銀行/ }).click();
   await expect(page.getByRole('article').getByText('玉山銀行台幣活存')).toBeVisible();
@@ -355,6 +445,10 @@ test('總覽 shows net worth and quick entry', async ({ page }) => {
   await expect(sheet.getByText('186.00')).toBeVisible();
   await expect(sheet.getByText('現價')).toBeVisible();
   await expect(sheet.getByText('技術指標僅供參考，不構成投資建議')).toBeVisible();
+  await expect(sheet.getByRole('heading', { name: '持股卡' })).toBeVisible();
+  await expect(sheet.getByText('回到這條線時檢視部位')).toBeVisible();
+  await expect(sheet.getByText('規則價位')).toBeVisible();
+  await expect(sheet.getByText('不是操作單')).toBeVisible();
   const sheetOverflow = await sheet.evaluate((node) => node.scrollWidth - node.clientWidth);
   expect(sheetOverflow).toBeLessThanOrEqual(1);
   await page.getByRole('button', { name: 'K 線' }).click();
@@ -365,6 +459,8 @@ test('總覽 shows net worth and quick entry', async ({ page }) => {
   await expect(pegatron.getByText('獲利')).toHaveCount(0);
   await expect(pegatron.getByText('停損')).toHaveCount(0);
   await expect(pegatron.getByText('布局')).toHaveCount(0);
+  await expect(pegatron.getByText('只記錄價位')).toBeVisible();
+  await expect(pegatron.getByText('不是操作單')).toBeVisible();
   await expect(pegatron.getByText('null', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: '關閉' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -418,4 +514,34 @@ test('配置 shows weights', async ({ page }) => {
   await expect(page.getByText('不構成投資建議')).toBeVisible();
   await expect(page.getByText('雇主持股')).toHaveCount(0);
   await fits(page, '配置');
+});
+
+test('計畫 shows both tracks, gaps, and the DCA card', async ({ page }) => {
+  await page.goto('/#/plan');
+  await expect(page.getByRole('img', { name: '計畫與實際淨值' })).toBeVisible();
+  await expect(page.locator('.acct-name', { hasText: '主計畫' })).toBeVisible();
+  await expect(page.locator('.acct-name', { hasText: '挑戰上億' })).toBeVisible();
+  await expect(page.getByText('第一個目標')).toBeVisible();
+  await expect(page.getByText('NT$100,000,000.00')).toBeVisible();
+  await expect(page.getByText('實際', { exact: true })).toBeVisible();
+  await expect(page.getByText('現金佔比低於煞車門檻')).toBeVisible();
+  await expect(page.getByText('待補')).toHaveCount(2);
+  await expect(page.getByText('每月 6 日')).toBeVisible();
+  await expect(page.getByText('每月上限 1 萬；每月一次')).toBeVisible();
+  await expect(page.getByText('每月上限 200 美元；每月一次')).toBeVisible();
+  await expect(page.getByText('每月上限 8,000；每月一次')).toBeVisible();
+  await expect(page.getByText('每月上限 5,000；每季')).toBeVisible();
+  await expect(page.getByText('煞車暫停')).toBeVisible();
+  const pending = page.locator('.dca-item').filter({ hasText: '每月上限 1 萬' });
+  await pending.getByRole('button', { name: '標記已扣款' }).click();
+  await expect(pending.getByText('已扣款')).toBeVisible();
+  await expect(page.getByText('已寫入')).toBeVisible();
+  const posted = JSON.parse(postBodies.at(-1));
+  expect(posted.action).toBe('mark_dca_debited');
+  expect(posted.data).toEqual({ dca_id: 'dca-0050', date: posted.data.date });
+  expect(posted.data.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  const href = new URL(posts.at(-1));
+  expect(href.searchParams.get('token')).toBe(token);
+  expect(href.searchParams.get('m')).toBe('post');
+  await fits(page, '計畫');
 });

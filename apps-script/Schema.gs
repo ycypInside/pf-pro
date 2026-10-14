@@ -298,3 +298,8 @@ var ENUMS = {
     "fund"
   ]
 };
+
+// P1 sheets (see P1.js; created by ensure_p1_sheets).
+SCHEMA.Plan = ['plan_id', 'track', 'label', 'year', 'target_date', 'target_twd', 'baseline_date', 'baseline_twd', 'monthly_twd', 'cagr', 'status', 'note', 'updated_at'];
+SCHEMA.DCA = ['dca_id', 'asset_id', 'symbol', 'name', 'account_id', 'currency', 'amount', 'debit_day', 'start_date', 'status', 'last_debit_date', 'core', 'note', 'updated_at'];
+SCHEMA.Holding_Rules = ['rule_key', 'card_key', 'card_name', 'card_class', 'asset_ids', 'card_status', 'rule_id', 'type', 'level', 'pct', 'date', 'confirm_days', 'grp', 'tier', 'info', 'action', 'reason', 'seed_peak', 'events', 'card_note', 'status', 'updated_at'];

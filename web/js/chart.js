@@ -13,21 +13,32 @@ function el(tag, props, ...kids) {
   return node;
 }
 
-function tick(value, percent) {
-  if (percent) return `${(Number(value) * 100).toFixed(0)}%`;
-  return Number(value).toFixed(2);
+function tick(value, options) {
+  if (options.percent) return `${(Number(value) * 100).toFixed(0)}%`;
+  const n = Number(value);
+  if (options.compact) {
+    const abs = Math.abs(n);
+    const sign = n < 0 ? '−' : '';
+    if (abs >= 1e8) return `${sign}${(abs / 1e8).toFixed(2)}億`;
+    if (abs >= 1e4) return `${sign}${(abs / 1e4).toFixed(0)}萬`;
+  }
+  return n.toFixed(2);
 }
 
 export function lineChart(series, options = {}) {
   const width = 320;
   const height = options.height || 168;
-  const pad = { l: 32, r: 8, t: 12, b: 20 };
+  const pad = { l: options.compact ? 42 : 32, r: 8, t: 12, b: 20 };
   const dates = [];
+  const markers = (options.markers || []).filter((point) => Number.isFinite(Number(point.y)) && point.date);
   series.forEach((item) => item.points.forEach((point) => {
     const y = Number(point.y);
     if (!Number.isFinite(y)) return;
     if (!dates.includes(point.date)) dates.push(point.date);
   }));
+  markers.forEach((point) => {
+    if (!dates.includes(point.date)) dates.push(point.date);
+  });
   dates.sort();
   if (dates.length < 2) {
     const note = document.createElement('p');
@@ -43,6 +54,11 @@ export function lineChart(series, options = {}) {
     if (y < min) min = y;
     if (y > max) max = y;
   }));
+  markers.forEach((point) => {
+    const y = Number(point.y);
+    if (y < min) min = y;
+    if (y > max) max = y;
+  });
   if (min === max) {
     min -= 1;
     max += 1;
@@ -58,12 +74,19 @@ export function lineChart(series, options = {}) {
       .join(' ');
     return el('polyline', { points, fill: 'none', stroke: item.color, 'stroke-width': '2', 'stroke-linejoin': 'round', 'stroke-linecap': 'round' });
   });
+  const dots = markers.map((point) => el('circle', {
+    cx: xOf(point.date).toFixed(1),
+    cy: yOf(point.y).toFixed(1),
+    r: '4',
+    fill: point.color || '#9c4036',
+  }));
   const caption = options.label || '走勢';
   const svg = el('svg', { class: 'chart', viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-label': caption },
     el('title', {}, caption),
     ticks.map((value) => el('line', { x1: pad.l, x2: width - pad.r, y1: yOf(value), y2: yOf(value), stroke: '#e4d8c6' })),
     lines,
-    ticks.map((value) => el('text', { x: 0, y: yOf(value) + 3, fill: '#667069', 'font-size': '9' }, tick(value, options.percent))),
+    dots,
+    ticks.map((value) => el('text', { x: 0, y: yOf(value) + 3, fill: '#667069', 'font-size': '9' }, tick(value, options))),
     el('text', { x: pad.l, y: height - 4, fill: '#667069', 'font-size': '9' }, dates[0].slice(5)),
     el('text', { x: width - pad.r, y: height - 4, fill: '#667069', 'font-size': '9', 'text-anchor': 'end' }, dates[dates.length - 1].slice(5)));
   const wrap = document.createElement('div');
@@ -74,6 +97,15 @@ export function lineChart(series, options = {}) {
     const swatch = document.createElement('i');
     swatch.className = 'swatch';
     swatch.style.background = item.color;
+    bit.append(swatch, document.createTextNode(item.name));
+    legend.append(bit);
+  });
+  markers.forEach((item) => {
+    if (!item.name) return;
+    const bit = document.createElement('span');
+    const swatch = document.createElement('i');
+    swatch.className = 'swatch';
+    swatch.style.background = item.color || '#9c4036';
     bit.append(swatch, document.createTextNode(item.name));
     legend.append(bit);
   });
