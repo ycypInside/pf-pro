@@ -1,5 +1,6 @@
-import { apiGet, clearConfig, loadConfig, saveConfig } from '../api.js';
+import { apiGet, clearConfig, hasConfig, loadConfig, saveConfig, tryGet } from '../api.js';
 import { h } from '../dom.js';
+import { policyLines } from '../groups.js';
 import { explainError, validateEndpoint } from '../money.js';
 
 export function renderSettings(main, ctx) {
@@ -37,10 +38,13 @@ export function renderSettings(main, ctx) {
       h('button', { type: 'button', class: 'btn', onClick: save }, '儲存'),
       h('button', { type: 'button', class: 'btn primary', onClick: test }, '測試連線'),
       h('button', { type: 'button', class: 'btn ghost', onClick: wipe }, '清除')));
+  const policyBox = h('div', {});
   main.append(
     h('p', { class: 'lede' }, '先貼上 Apps Script 網頁應用程式的網址與權杖。測試連線只打 health，確認權杖與版本。'),
     form,
-    status);
+    status,
+    policyBox);
+  if (hasConfig()) loadPolicy(policyBox, ctx);
 
   function current() {
     return { apiUrl: url.value.trim(), token: token.value.trim() };
@@ -85,6 +89,24 @@ export function renderSettings(main, ctx) {
         h('strong', {}, '連線失敗'),
         h('p', {}, explainError(error.message))));
     }
+  }
+
+  async function loadPolicy(box, pageCtx) {
+    box.append(h('p', { class: 'muted' }, '讀取配置政策…'));
+    const [settingsR, marketR] = await Promise.all([tryGet('settings'), tryGet('market')]);
+    if (!pageCtx.alive()) return;
+    const policy = (marketR.ok && marketR.data.policy)
+      || (settingsR.ok && settingsR.data.settings && settingsR.data.settings.target_policy)
+      || null;
+    const lines = policyLines(policy);
+    box.replaceChildren(h('section', { class: 'card' },
+      h('h2', {}, '配置政策'),
+      h('p', { class: 'hint' }, '唯讀。目標會隨市場情緒在上下限之間移動。'),
+      lines.length
+        ? h('dl', { class: 'split' }, lines.map((line) => h('div', {},
+          h('dt', {}, line.label),
+          h('dd', {}, line.text))))
+        : h('p', { class: 'muted' }, '還沒有讀到 target_policy。')));
   }
 
   function wipe() {

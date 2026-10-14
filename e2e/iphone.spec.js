@@ -97,6 +97,115 @@ const gets = {
     holdings: [],
     warnings: [],
   },
+  balances: {
+    ok: true,
+    net_worth: summary.net_worth,
+    institutions: [{
+      institution: '玉山銀行',
+      cash_twd: 12345678.9,
+      holdings_twd: 0,
+      liabilities_twd: 0,
+      total_twd: 12345678.9,
+      accounts: ['group', 'cash'],
+    }],
+    balances: [
+      {
+        account_id: 'group',
+        name: '玉山集團',
+        is_group: true,
+        total_twd: 0,
+        rollup_twd: 12345678.9,
+        status: 'active',
+      },
+      {
+        account_id: 'cash',
+        name: '玉山銀行台幣活存',
+        type: 'bank_cash',
+        currency: 'TWD',
+        status: 'active',
+        institution: '玉山銀行',
+        balance_twd: 12345678.9,
+        total_twd: 12345678.9,
+        holdings_twd: 0,
+        is_group: false,
+      },
+    ],
+  },
+  holdings: {
+    ok: true,
+    holdings: [
+      ...summary.holdings,
+      {
+        asset_id: '4938',
+        name: '和碩',
+        symbol: '4938',
+        account_id: 'cash',
+        asset_class: 'stock',
+        quantity: 10,
+        market_value_twd: 1000,
+        cost_basis_twd: 800,
+        unrealized_pl_twd: 200,
+        currency: 'TWD',
+        last_price: 100,
+      },
+    ],
+  },
+  quotes: {
+    ok: true,
+    quotes: {
+      '0050': { last: 180.25, change_pct: -0.012, spark: [170, 172, 175, 180.25], source: 'stored' },
+      4938: { last: 100, change_pct: 0.01, spark: [90, 95, 100], source: 'yahoo' },
+    },
+  },
+  advice: {
+    ok: true,
+    items: [
+      { level: 'warn', title: '雇主持股集中', body: '不要顯示這則。', tag: 'employer' },
+      { level: 'info', title: '現金緩衝', body: '可考慮把新收入留在現金。', tag: 'cash' },
+    ],
+    disclaimer: '以上內容由規則依你的資料與公開市場數據自動產生，只是參考方向，不構成投資建議，也不是買賣指示。',
+  },
+  market: {
+    ok: true,
+    sentiment: { heat: 0.62, label: '偏樂觀', inputs: 3 },
+    indicators: {
+      vix: { value: 16.2, date: '2026-10-13' },
+      twii: { value: 22000, ma60: 21000, above_ma60: true, gap_ma60: 0.0476 },
+    },
+    policy: {
+      equity_max: 0.9,
+      equity_min: 0.8,
+      bond_max: 0.05,
+      bond_target: 0.05,
+      cash_min: 0.05,
+      cash_max: 0.15,
+      other: 'hold',
+      sentiment_mode: 'defensive_when_hot',
+      single_name_max: 0.1,
+      employer_max: 0.05,
+    },
+  },
+  chart: {
+    ok: true,
+    asset_id: '0050',
+    symbol: '0050',
+    name: '元大台灣50',
+    source: 'stored',
+    rows: [
+      { d: '2026-09-01', o: 170, h: 176, l: 168, c: 172 },
+      { d: '2026-09-15', o: 172, h: 178, l: 170, c: 175 },
+      { d: '2026-10-13', o: 175, h: 182, l: 174, c: 180.25 },
+    ],
+    ma20: [null, 173, 175],
+    ma60: [null, null, 174],
+    levels: {
+      resistance: [{ price: 190 }],
+      support: [{ price: 160 }],
+      pivot: { p: 178, r1: 184, s1: 170 },
+      high_52w: 200,
+      low_52w: 140,
+    },
+  },
   allocation: {
     ok: true,
     total_twd: 98765432.1,
@@ -108,6 +217,7 @@ const gets = {
     ],
     estimated: [],
     missing_fx: [],
+    sentiment: { heat: 0.62, label: '偏樂觀', inputs: 3 },
   },
 };
 
@@ -182,6 +292,9 @@ test('設定 connects and stays inside the iPhone width', async ({ page }) => {
   await expect(page.getByLabel('API 網址')).toHaveValue(apiUrl);
   await page.getByRole('button', { name: '測試連線' }).click();
   await expect(page.getByText('連線成功')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '配置政策' })).toBeVisible();
+  await expect(page.getByText('個股上限')).toBeVisible();
+  await expect(page.getByText('雇主')).toHaveCount(0);
   await fits(page, '設定');
 });
 
@@ -192,6 +305,18 @@ test('總覽 shows net worth and quick entry', async ({ page }) => {
   await expect(page.getByRole('button', { name: '記支出' })).toBeVisible();
   await expect(page.getByRole('button', { name: '記收入' })).toBeVisible();
   await expect(page.getByRole('button', { name: '轉帳' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'AI 專家建議' })).toBeVisible();
+  await expect(page.getByText('不構成投資建議')).toBeVisible();
+  await expect(page.getByText('現金緩衝')).toBeVisible();
+  await expect(page.getByText('雇主持股')).toHaveCount(0);
+  await expect(page.getByText('和碩')).toBeVisible();
+  await expect(page.getByText('玉山集團')).toHaveCount(0);
+  await page.getByRole('button', { name: /玉山銀行/ }).click();
+  await expect(page.getByRole('article').getByText('玉山銀行台幣活存')).toBeVisible();
+  await page.getByRole('button', { name: /元大台灣50/ }).click();
+  await expect(page.getByText('價格來源：已儲存淨值')).toBeVisible();
+  await page.getByRole('button', { name: 'K 線' }).click();
+  await page.getByRole('button', { name: '關閉' }).click();
   await fits(page, '總覽');
 });
 
@@ -236,5 +361,10 @@ test('配置 shows weights', async ({ page }) => {
   await expect(page.getByText('可投資資產 · 台幣')).toBeVisible();
   await expect(page.getByText('股票', { exact: true })).toBeVisible();
   await expect(page.getByText('再平衡')).toBeVisible();
+  await expect(page.getByText('偏樂觀')).toBeVisible();
+  await expect(page.getByText(/VIX 16\.2/)).toBeVisible();
+  await expect(page.getByText(/可考慮減少/)).toBeVisible();
+  await expect(page.getByText('不構成投資建議')).toBeVisible();
+  await expect(page.getByText('雇主持股')).toHaveCount(0);
   await fits(page, '配置');
 });

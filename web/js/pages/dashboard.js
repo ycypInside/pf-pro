@@ -1,9 +1,12 @@
 import { hasConfig, tryGet } from '../api.js';
 import { h, mount } from '../dom.js';
-import { formatMoney, formatQty, formatRate, formatTwd } from '../format.js';
-import { ACCOUNT_TYPE, kindLabel } from '../labels.js';
+import { formatRate, formatTwd } from '../format.js';
+import { kindLabel } from '../labels.js';
 import { explainError, netWorth, splitCategories, taipeiMonth, withTwd } from '../money.js';
 import { entryQuery, readTemplates } from '../prefs.js';
+import { renderAccountGroups } from './accounts.js';
+import { adviceCard } from './advice.js';
+import { renderHoldings } from './holdings.js';
 
 export async function renderDashboard(main, ctx) {
   if (!hasConfig()) {
@@ -13,7 +16,7 @@ export async function renderDashboard(main, ctx) {
   main.append(h('p', { class: 'muted' }, '讀取中…'));
   const month = taipeiMonth();
   const loaded = await loadOverview(month);
-  const { accountsR, balancesR, incomeR, checksR, pricesR, holdingsR } = loaded;
+  const { accountsR, balancesR, incomeR, checksR, pricesR, holdingsR, quotesR, adviceR } = loaded;
   if (!ctx.alive()) return;
   main.replaceChildren();
   const fatal = [accountsR, balancesR, incomeR, checksR].find((item) => !item.ok);
@@ -56,9 +59,12 @@ export async function renderDashboard(main, ctx) {
       h('button', { type: 'button', class: 'btn', onClick: () => ctx.go('entry', { tab: 'transfer' }) }, '轉帳')),
     templates.length ? section('再記一筆', templateChips(templates, names, ctx)) : null,
     missingFx(summary),
-    section('帳戶餘額', balancesR.ok ? balanceList(balances, names) : failNote(balancesR)),
+    adviceCard(adviceR.ok ? adviceR.data : null, !adviceR.ok),
+    section('帳戶餘額', balancesR.ok
+      ? renderAccountGroups(balancesR.data.balances || rawBalances, accounts, balancesR.data.institutions || [], localStorage)
+      : renderAccountGroups(rawBalances, accounts, [], localStorage)),
     section(`${month.label}收支`, incomeR.ok ? incomeBlock(report, categories) : failNote(incomeR)),
-    holdings.length ? section('持倉', holdingList(holdings, names)) : null,
+    section('持倉', renderHoldings(holdingsR.ok ? (holdingsR.data.holdings || holdings) : holdings, quotesR.ok ? quotesR.data.quotes : {}, names)),
     section('報價與最後估值日', pricesR.ok ? priceBlock(pricesR.data) : failNote(pricesR, '報價')),
     section('資料檢查', checksR.ok ? checkBlock(checksR.data.warnings || []) : failNote(checksR)));
 }
@@ -76,16 +82,27 @@ function templateChips(templates, names, ctx) {
 }
 
 async function loadOverview(month) {
-  const summary = await tryGet('summary', { from: month.from, to: month.to });
+  const [summary, balances, quotes, advice, holdings] = await Promise.all([
+    tryGet('summary', { from: month.from, to: month.to }),
+    tryGet('balances'),
+    tryGet('quotes'),
+    tryGet('advice'),
+    tryGet('holdings'),
+  ]);
   if (summary.ok) {
     const data = summary.data;
+    const balanceData = balances.ok
+      ? { institutions: [], ...balances.data, net_worth: balances.data.net_worth || data.net_worth }
+      : { balances: data.balances || [], net_worth: data.net_worth, institutions: [] };
     return {
       accountsR: { ok: true, data: { accounts: data.accounts || [] } },
-      balancesR: { ok: true, data: { balances: data.balances || [], net_worth: data.net_worth } },
+      balancesR: { ok: true, data: balanceData },
       incomeR: { ok: true, data: { report: data.report } },
       checksR: { ok: true, data: { warnings: data.warnings || [] } },
       pricesR: { ok: true, data: { quotes: data.quotes || [], last_valuations: data.last_valuations || [], stale: data.stale || [] } },
-      holdingsR: { ok: true, data: { holdings: data.holdings || [] } },
+      holdingsR: holdings.ok ? holdings : { ok: true, data: { holdings: data.holdings || [] } },
+      quotesR: quotes,
+      adviceR: advice,
     };
   }
   if (summary.error && summary.error.message === 'unknown q') {
@@ -97,7 +114,7 @@ async function loadOverview(month) {
       tryGet('prices'),
       tryGet('holdings'),
     ]);
-    return { accountsR, balancesR, incomeR, checksR, pricesR, holdingsR };
+    return { accountsR, balancesR, incomeR, checksR, pricesR, holdingsR, quotesR: quotes, adviceR: advice };
   }
   return {
     accountsR: summary,
@@ -106,6 +123,8 @@ async function loadOverview(month) {
     checksR: summary,
     pricesR: summary,
     holdingsR: summary,
+    quotesR: quotes,
+    adviceR: advice,
   };
 }
 
@@ -136,18 +155,6 @@ function missingFx(summary) {
     h('p', {}, `${ids.join('、')} 未計入淨資產。請到記帳頁補一筆匯率。`));
 }
 
-function balanceList(balances, names) {
-  const rows = balances.filter((row) => !row.status || row.status === 'active');
-  if (!rows.length) return h('p', { class: 'muted' }, '還沒有帳戶。');
-  return h('div', {}, rows.map((row) => h('article', { class: 'acct' },
-    h('div', {},
-      h('p', { class: 'acct-name' }, names[row.account_id] || row.name || row.account_id),
-      h('p', { class: 'muted' }, `${ACCOUNT_TYPE[row.type] || row.type || ''} · ${row.currency}${row.fx_stale ? ' · 匯率過期' : ''}`)),
-    h('div', { class: 'acct-amt' },
-      h('p', { class: 'num' }, formatMoney(row.balance, row.currency, row.currency === 'JPY' ? 0 : 2)),
-      h('p', { class: 'num muted' }, row.fx_missing ? '缺匯率' : formatTwd(row.balance_twd))))));
-}
-
 function incomeBlock(report, categories) {
   return h('div', { class: 'stack' },
     h('dl', { class: 'split' },
@@ -166,16 +173,6 @@ function bars(rows, tone) {
     h('span', {}, row.name),
     h('span', { class: 'track' }, h('span', { class: `fill ${tone}`, style: `width:${Math.max(6, (row.amount / max) * 100)}%` })),
     h('span', { class: 'num' }, formatTwd(row.amount)))));
-}
-
-function holdingList(holdings, names) {
-  return h('div', {}, holdings.map((row) => h('article', { class: 'acct' },
-    h('div', {},
-      h('p', { class: 'acct-name' }, `${row.name || row.symbol || row.asset_id}`),
-      h('p', { class: 'muted' }, `${names[row.account_id] || row.account_id} · ${formatQty(row.quantity)} 股${row.is_stale ? ' · 價格過期' : ''}`)),
-    h('div', { class: 'acct-amt' },
-      h('p', { class: 'num' }, formatTwd(row.market_value_twd)),
-      h('p', { class: 'num muted' }, row.last_price === '' || row.last_price === null ? '無報價' : formatMoney(row.last_price, row.currency, 2))))));
 }
 
 function priceBlock(data) {
