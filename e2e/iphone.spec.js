@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 const token = ['mock', 'ledger', 'token'].join('-');
 const apiUrl = 'https://example.com/exec';
-const nav = ['總覽', '計畫', '持股卡', '紙上倉', '績效', '配置', '記帳', '明細', '設定'];
+const nav = ['總覽', '計畫', '持股卡', '紙上倉', '績效', '配置', '基金成分', '個股分析', '記帳', '明細', '設定'];
 
 const summary = {
   ok: true,
@@ -311,7 +311,7 @@ const gets = {
     ok: true,
     disclaimer: '依持股卡規則與公開價格自動比對；僅為檢討提醒，不是操作單。',
     alerts: [
-      { level: 'red', type: 'close_below', name: '元大台灣50', card_key: 'tw', action: '檢視部位', reason: '收盤低於規則線', detail: '收盤 180 / 線 190，連續 1/3 日' },
+      { level: 'red', type: 'close_below', name: '元大台灣50', card_key: 'tw', action: '檢視部位', reason: '收盤低於規則線', detail: '收盤 180 / 線 190，連續 1/3 日', trigger_basis: 'close', close_date: '2026-10-13', close_price: 180 },
       { level: 'amber', name: '和碩', action: '只做紀錄', reason: '接近財報', detail: '觀察中' },
       { level: 'amber', type: 'trade_ticket', name: '賣出單', action: '確認交易單', reason: '還沒送出', detail: '1 筆' },
       { level: 'watch', name: '元大台灣50', card_key: 'tw', action: '再看一天', reason: '尚未連續確認', detail: '連續 1/3 日' },
@@ -327,6 +327,8 @@ const gets = {
         name: '台灣50卡',
         asset_ids: ['0050'],
         status: 'active',
+        trigger_basis: 'close',
+        close_date: '2026-10-13',
         note: '核心部位',
         rules: [
           { rule_key: 'r1', type: 'close_below', level: 175, confirm_days: 3, action: '回到這條線時檢視部位', reason: '收盤低於規則價', status: 'active' },
@@ -381,6 +383,8 @@ const gets = {
   paper: {
     ok: true,
     mode: 'paper',
+    is_stale: true,
+    stale: '紙上倉報價已過期',
     note: '模擬倉，與實際持倉完全分開，不計入淨值與配置。年化以 252 交易日換算，交易日不足 20 日時僅供參考。',
     sleeves: [
       {
@@ -457,14 +461,107 @@ const gets = {
       },
     },
   },
+  fund_composition: {
+    ok: true,
+    as_of: '2026-10-14',
+    file_date: '2026-10-01',
+    source_note: '公開月報',
+    portfolio_value_twd: 1000000,
+    funds: [
+      {
+        fund_id: 'f1',
+        asset_id: '0050',
+        asset_ids: ['0050'],
+        symbol: '0050',
+        name: '台灣50',
+        fund_type: 'etf',
+        currency: 'TWD',
+        data_date: '2026-09-30',
+        file_date: '2026-10-01',
+        held_value_twd: 250000,
+        top10: [
+          { rank: 1, name: '台積電', symbol: '2330', weight_pct: 40.5, sector: '半導體', region: '台灣' },
+          { rank: 2, name: '聯發科', symbol: '2454', weight_pct: 5, sector: '半導體', region: '台灣' },
+        ],
+        sectors: [{ name: '半導體', weight_pct: 60 }],
+        sectors_date: '2026-09-30',
+        regions: [],
+        regions_date: '',
+        overlap: [{ asset_id: '2330', symbol: '2330', name: '台積電', holding_name: '台積電', fund_weight_pct: 40.5, direct_value_twd: 100000, via_fund_twd: 100000 }],
+        overlap_weight_pct: 40.5,
+        source: 'https://example.com/fund-note',
+        updated_at: '2026-10-01',
+      },
+      {
+        fund_id: 'f2',
+        asset_id: 'bond',
+        asset_ids: ['bond'],
+        symbol: 'BOND',
+        name: '全球債券',
+        fund_type: 'fund',
+        currency: 'TWD',
+        data_date: '2026-08-31',
+        file_date: '2026-10-01',
+        held_value_twd: null,
+        top10: [],
+        sectors: [],
+        sectors_date: '',
+        regions: [{ name: '美國', weight_pct: 80 }],
+        regions_date: '2026-08-31',
+        overlap: [],
+        overlap_weight_pct: 0,
+        updated_at: '2026-10-01',
+      },
+    ],
+    lookthrough: [{
+      asset_id: '2330',
+      symbol: '2330',
+      name: '台積電',
+      direct_value_twd: 100000,
+      via_funds_twd: 80000,
+      total_twd: 180000,
+      funds: [{ fund_id: 'f1', fund_name: '台灣50', fund_weight_pct: 40.5, via_fund_twd: 80000 }],
+    }],
+    cross_fund: [{
+      name: '台積電',
+      funds: [
+        { fund_id: 'f1', fund_name: '台灣50', weight_pct: 40.5 },
+        { fund_id: 'f2', fund_name: '全球債券', weight_pct: 1 },
+      ],
+    }],
+  },
+  stock_rotation: {
+    ok: true,
+    as_of: '2026-10-14',
+    file_date: '2026-10-12',
+    cadence: '每週一檔',
+    rotation: [
+      { seq: 1, week_start: '2026-10-06', week_end: '2026-10-12', market: 'TW', symbol: '2330', name: '台積電', asset_id: '2330', status: 'done', is_current: false, note: '已結束', report_date: '2026-10-10', latest_report_date: '2026-10-10', has_report: true, extra: { report_path: '', extra_reports: [] } },
+      { seq: 2, week_start: '2026-10-13', week_end: '2026-10-19', market: 'US', symbol: 'AAPL', name: '蘋果', asset_id: 'AAPL', status: 'current', is_current: true, note: '本週', report_date: '', latest_report_date: '', has_report: false, extra: { report_path: '', extra_reports: [] } },
+    ],
+    reports: [{ symbol: '2330', report_date: '2026-10-10', title: '台積電週報', chars: 12000, in_rotation: true }],
+  },
+  stock_report: {
+    ok: true,
+    symbol: '2330',
+    report_date: '2026-10-10',
+    title: '台積電週報',
+    md: '# 台積電週報\n\n<script>alert(1)</script>\n\n<style>body{color:red}</style>\n\n<iframe src="https://example.com/frame"></iframe>\n\n<p onclick="alert(1)">段落</p>\n\n[壞](javascript:alert(1))\n\n[好](https://example.com/note)\n\n| 欄 | 值 |\n| --- | --- |\n| 甲 | 乙 |\n',
+    complete: false,
+    chars: 8000,
+    updated_at: '2026-10-10',
+    history_dates: ['2026-10-03', '2026-10-10'],
+  },
 };
 
 let posts = [];
 let postBodies = [];
+let reads = [];
 
 test.beforeEach(async ({ page }) => {
   posts = [];
   postBodies = [];
+  reads = [];
   await page.route('https://example.com/**', async (route) => {
     const request = route.request();
     if (request.method() === 'POST') {
@@ -495,7 +592,11 @@ test.beforeEach(async ({ page }) => {
     }
     const url = new URL(request.url());
     const q = url.searchParams.get('q') || '';
+    reads.push(`${q}:${url.searchParams.get('parts') || ''}:${url.searchParams.get('symbol') || ''}`);
     let body = gets[q] || { ok: false, error: 'unknown q' };
+    if (q === 'stock_report' && url.searchParams.get('symbol') === 'AAPL') {
+      body = { ok: false, error: 'no report', symbol: 'AAPL' };
+    }
     if (q === 'chart' && url.searchParams.get('asset') === '4938') {
       body = { ...gets.chart, asset_id: '4938', symbol: '4938', name: '和碩', source: 'yahoo' };
     }
@@ -565,6 +666,7 @@ test('總覽 shows net worth and quick entry', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '檢討提醒' })).toBeVisible();
   await expect(page.getByText('不是操作單')).toHaveCount(2);
   await expect(page.locator('article.alert-red')).toContainText('檢視部位');
+  await expect(page.locator('article.alert-red')).toContainText('以 2026-10-13 收盤判定');
   await expect(page.locator('article.alert-amber', { hasText: '只做紀錄' })).toBeVisible();
   await expect(page.locator('article.alert-watch')).toContainText('再看一天');
   await expect(page.locator('article.alert-upcoming')).toContainText('日期將到');
@@ -721,8 +823,12 @@ test('nav matches the column at 1280 and 375', async ({ page }) => {
         innerHeight: window.innerHeight,
         pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
         reached,
+        sameRow: new Set([...nav.querySelectorAll('a')].map((node) => node.offsetTop)).size === 1,
+        wrap: getComputedStyle(nav).flexWrap,
       };
     }, nav);
+    expect(box.sameRow).toBe(true);
+    expect(box.wrap).toBe('nowrap');
     expect(Math.abs(box.navWidth - box.appWidth)).toBeLessThanOrEqual(1);
     expect(Math.abs(box.navLeft - box.appLeft)).toBeLessThanOrEqual(1);
     expect(box.navBottom).toBeGreaterThan(box.innerHeight * 0.85);
@@ -738,6 +844,7 @@ test('持股卡 shows price, exit distance, day count, and thesis date', async (
   await expect(page.getByText('出場線 175.00 TWD')).toBeVisible();
   await expect(page.getByText('第 1/3 日')).toBeVisible();
   await expect(page.getByText('論點檢討 2026-11-15')).toBeVisible();
+  await expect(page.getByText('以 2026-10-13 收盤判定')).toBeVisible();
   await expect(page.getByText('不是操作單')).toBeVisible();
   const pegatron = page.locator('article').filter({ hasText: '和碩卡' });
   await expect(pegatron.locator('.estimate')).toContainText('估');
@@ -767,6 +874,9 @@ test('待您決定 shows 今天無事 when the count is zero', async ({ page }) 
 test('紙上倉 stays separate from real holdings', async ({ page }) => {
   await page.goto('/#/paper');
   await expect(page.getByText('這是紙上倉，不是真實持倉')).toBeVisible();
+  await expect(page.getByText('估 紙上倉報價已過期')).toBeVisible();
+  await expect(page.locator('.paper-metrics .estimate').first()).toContainText('估');
+  await expect(page.locator('.paper-compare .legend')).toContainText('估 0050');
   await expect(page.getByText('不計入淨值與配置').first()).toBeVisible();
   await expect(page.getByRole('heading', { name: '紙上倉 A' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '紙上倉 B' })).toBeVisible();
@@ -784,4 +894,65 @@ test('紙上倉 stays separate from real holdings', async ({ page }) => {
   await expect(page.getByText('元大台灣50')).toHaveCount(0);
   await expect(page.getByText('NT$98,765,432.10')).toHaveCount(0);
   await fits(page, '紙上倉');
+});
+
+test('基金成分 shows holdings, overlap, and shared names', async ({ page }) => {
+  await page.goto('/#/funds');
+  await expect(page.getByText('檔案日 2026-10-01 · 公開月報')).toBeVisible();
+  await expect(page.getByText('台灣50').first()).toBeVisible();
+  await expect(page.getByText('ETF', { exact: true })).toBeVisible();
+  await expect(page.getByText('持有 NT$250,000.00')).toBeVisible();
+  await expect(page.getByText('資料日 2026-09-30 · 產業日 2026-09-30')).toBeVisible();
+  const tsmc = page.locator('.weight-row', { hasText: '台積電' }).first();
+  await expect(tsmc).toContainText('直接持有');
+  await expect(tsmc).toContainText('40.50%');
+  await expect(page.locator('.weight-row', { hasText: '聯發科' })).not.toContainText('直接持有');
+  await expect(page.getByRole('heading', { name: '產業' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '地區' })).toHaveCount(0);
+  await page.locator('summary', { hasText: '全球債券' }).click();
+  await expect(page.getByText('基金', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('持有 —')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '地區' })).toBeVisible();
+  await expect(page.getByText('美國')).toBeVisible();
+  const source = page.getByRole('link', { name: '資料來源' });
+  await expect(source).toHaveAttribute('href', 'https://example.com/fund-note');
+  await expect(source).toHaveAttribute('rel', 'noopener noreferrer');
+  await expect(page.getByText('https://example.com/fund-note')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: '重疊曝險' })).toBeVisible();
+  await expect(page.getByText('估算（僅前十大）')).toBeVisible();
+  await expect(page.getByText('直接 NT$100,000.00 + 透過基金 NT$80,000.00 = NT$180,000.00')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '多檔基金共同持有' })).toBeVisible();
+  await expect(page.getByText('僅供研究參考，非交易建議；和碩僅使用公開資料。')).toBeVisible();
+  expect(reads.some((item) => item.startsWith('bundle:fund_composition'))).toBe(true);
+  await fits(page, '基金成分');
+});
+
+test('個股分析 loads a sanitized report', async ({ page }) => {
+  await page.goto('/#/rotation');
+  await expect(page.getByText('每週一檔')).toBeVisible();
+  await expect(page.locator('tr.rotation-current')).toContainText('AAPL');
+  await expect(page.locator('tr.rotation-current')).toContainText('尚無報告');
+  await expect(page.locator('tr', { hasText: '2330' })).toContainText('2026-10-06–2026-10-12');
+  await expect(page.locator('tr', { hasText: '2330' })).toContainText('TW');
+  await page.locator('tr[data-symbol="2330"]').click();
+  await expect(page.locator('.report-pane h2', { hasText: '台積電週報' })).toBeVisible();
+  await expect(page.locator('.report-pane')).toContainText('2026-10-10');
+  await expect(page.locator('.report-pane')).toContainText('報告不完整');
+  await expect(page.locator('.report-pane')).toContainText('歷史 2026-10-03、2026-10-10');
+  await expect(page.locator('.md script, .md iframe, .md style, .md [onclick]')).toHaveCount(0);
+  const link = page.locator('.md a[href="https://example.com/note"]');
+  await expect(link).toHaveAttribute('href', 'https://example.com/note');
+  await expect(link).toHaveAttribute('target', '_blank');
+  await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  await expect(page.locator('.md a[href^="javascript:"]')).toHaveCount(0);
+  const overflow = await page.locator('.md .md-table').evaluate((node) => getComputedStyle(node).overflowX);
+  expect(['auto', 'scroll']).toContain(overflow);
+  await page.getByRole('button', { name: '台積電週報 2026-10-10' }).click();
+  await expect(page.locator('.report-pane h2', { hasText: '台積電週報' })).toBeVisible();
+  await page.locator('tr[data-symbol="AAPL"]').click();
+  await expect(page.locator('.report-pane')).toContainText('尚無報告');
+  await expect(page.getByText('僅供研究參考，非交易建議；和碩僅使用公開資料。')).toBeVisible();
+  expect(reads.some((item) => item.startsWith('bundle:stock_rotation'))).toBe(true);
+  expect(reads.some((item) => item.startsWith('stock_report::2330'))).toBe(true);
+  await fits(page, '個股分析');
 });

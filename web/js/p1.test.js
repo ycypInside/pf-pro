@@ -162,6 +162,7 @@ test('holding cards show the exit distance, day count, and thesis date', () => {
   assert.ok(Math.abs(card.distance - (180.25 / 175 - 1)) < 1e-9);
   assert.deepEqual(card.day, { current: 1, total: 3 });
   assert.equal(card.thesis, '2026-11-15');
+  assert.equal(card.closeBasis, '');
 });
 
 test('paper maps benchmark 50 to 0050 and always lists sleeves A/B/C', () => {
@@ -199,6 +200,35 @@ test('paper maps benchmark 50 to 0050 and always lists sleeves A/B/C', () => {
   assert.equal(view.sleeves[0].gate.goLive, false);
   assert.equal(view.sleeves[1].present, false);
   assert.equal(view.sleeves[2].sleeve, 'C');
+  assert.equal(view.stale, false);
+  assert.equal(view.sleeves[0].stale, false);
+  assert.equal(view.benchmarks['0050'].stale, false);
+});
+
+test('paper stale marks the book, every sleeve, and each benchmark', () => {
+  const view = paperView({
+    is_stale: true,
+    stale: '紙上倉報價已過期',
+    sleeves: [{ sleeve: 'A', is_stale: false }],
+    benchmarks: {
+      '0050': { symbol: '0050', is_stale: true, return_pct: 1 },
+      '00631L': { symbol: '00631L', return_pct: 2 },
+    },
+  });
+  assert.equal(view.stale, true);
+  assert.equal(view.staleNote, '紙上倉報價已過期');
+  assert.equal(view.sleeves.every((row) => row.stale), true);
+  assert.equal(view.benchmarks['0050'].stale, true);
+  assert.equal(view.benchmarks['00631L'].stale, true);
+  const sleeveOnly = paperView({
+    sleeves: [{ sleeve: 'A', is_stale: true }, { sleeve: 'B' }],
+    benchmarks: { '00631L': { symbol: '00631L', is_stale: false } },
+  });
+  assert.equal(sleeveOnly.stale, false);
+  assert.equal(sleeveOnly.staleNote, '');
+  assert.equal(sleeveOnly.sleeves[0].stale, true);
+  assert.equal(sleeveOnly.sleeves[1].stale, false);
+  assert.equal(sleeveOnly.benchmarks['00631L'].stale, false);
 });
 
 test('holding card rules match the asset and only priced active rules become lines', () => {

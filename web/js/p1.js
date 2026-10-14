@@ -1,6 +1,7 @@
 /** Plan, DCA, alerts, and holding-card helpers. Pure; no DOM. */
 
 import { daysBetween, isYes } from './money.js';
+import { cardCloseBasis, paperStale, rowStale } from './research.js';
 
 const MONTHS = 30.4375;
 
@@ -235,6 +236,7 @@ export function cardViews(cards, quotes, alerts) {
       distance: Number.isFinite(price) && exit ? price / exit - 1 : null,
       day: dayCount(related, exitRule),
       thesis: thesisDate(rules),
+      closeBasis: cardCloseBasis(card, related),
     };
   });
 }
@@ -245,6 +247,7 @@ export function benchmarkSymbol(symbol) {
 
 export function paperView(payload) {
   const data = payload && payload.ok !== false ? payload : {};
+  const book = paperStale(data);
   const rows = data.sleeves || [];
   const sleeves = ['A', 'B', 'C'].map((id) => {
     const row = rows.find((item) => String(item.sleeve) === id) || { sleeve: id };
@@ -281,6 +284,7 @@ export function paperView(payload) {
       positions: row.positions || [],
       series: row.series || [],
       present: rows.some((item) => String(item.sleeve) === id),
+      stale: rowStale(row, book),
     };
   });
   const benchmarks = {};
@@ -293,11 +297,14 @@ export function paperView(payload) {
       returnPct: finiteOrNull(value && value.return_pct),
       maxDdPct: finiteOrNull(value && value.max_dd_pct),
       series: (value && value.series) || [],
+      stale: rowStale(value, book),
     };
   }
   return {
     mode: data.mode || 'paper',
     note: data.note || '模擬倉，與實際持倉完全分開，不計入淨值與配置。',
+    stale: book.stale,
+    staleNote: book.note,
     sleeves,
     benchmarks,
   };

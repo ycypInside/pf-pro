@@ -57,6 +57,7 @@ function cardArticle(card) {
       h('p', {}, card.exit == null ? '出場線 待補' : `出場線 ${formatMoney(card.exit, card.currency)}`),
       h('p', { class: 'muted' }, card.distance == null ? '距離 待補' : `距離出場線 ${formatPct(card.distance)}`),
       h('p', {}, card.day ? `第 ${card.day.current}/${card.day.total} 日` : '確認天數 待補'),
-      h('p', { class: 'hint' }, card.thesis ? `論點檢討 ${card.thesis}` : '論點檢討 待補')),
+      h('p', { class: 'hint' }, card.thesis ? `論點檢討 ${card.thesis}` : '論點檢討 待補'),
+      card.closeBasis ? h('p', { class: 'hint close-basis' }, card.closeBasis) : null),
     card.symbol ? h('div', { class: 'acct-amt' }, h('p', { class: 'muted' }, card.symbol)) : null);
 }

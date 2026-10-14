@@ -87,6 +87,7 @@ h3 { font-size: 13px; margin: 8px 0 4px; color: var(--muted); font-weight: 600; 
 
 .main {
   flex: 1 0 auto;
+  min-width: 0;
   padding:
     8px
     max(20px, env(safe-area-inset-right))
@@ -310,6 +311,7 @@ input:read-only { background: #f3eee4; }
   min-width: 0;
   max-width: 100%;
   display: flex;
+  flex-wrap: nowrap;
   overflow-x: auto;
   overscroll-behavior-x: contain;
   scrollbar-width: none;
@@ -336,6 +338,7 @@ input:read-only { background: #f3eee4; }
   line-height: 1.15;
   min-height: 48px;
   padding: 4px 2px 0;
+  white-space: nowrap;
 }
 .nav a.on { color: var(--green-deep); font-weight: 650; }
 .nav svg { width: 20px; height: 20px; }
@@ -546,3 +549,56 @@ dialog.sheet::backdrop { background: rgba(22, 32, 28, 0.45); }
 .tag.alert-info, .tag.dca-debited { background: var(--ok); color: var(--green-deep); }
 .rule { padding: 8px 0; border-top: 1px solid var(--line); min-width: 0; }
 .rule p { margin: 0; }
+
+.fund-card, .look-row { border-top: 1px solid var(--line); padding: 4px 0; }
+.fund-card summary, .look-row summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  cursor: pointer;
+}
+.fund-name { font-weight: 650; }
+.weight-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 4px 8px;
+  align-items: center;
+  margin: 6px 0;
+}
+.weight-name { min-width: 0; overflow-wrap: anywhere; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.weight-track {
+  grid-column: 1 / -1;
+  height: 8px;
+  background: #efe6d6;
+  border-radius: 99px;
+  overflow: hidden;
+}
+.weight-fill { display: block; height: 100%; background: var(--green); }
+.hscroll, .md-table { overflow-x: auto; max-width: 100%; width: 100%; min-width: 0; }
+.rotation { width: 100%; border-collapse: collapse; min-width: 36rem; }
+.rotation th, .rotation td { padding: 8px 6px; text-align: left; vertical-align: top; border-top: 1px solid var(--line); }
+.rotation-week th { background: #f6f1e6; }
+.rotation-current { background: var(--dup); }
+.rotation tr { cursor: pointer; }
+.report-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.report-list h3 { flex: 1 0 100%; margin: 8px 0 0; }
+.md { overflow-wrap: anywhere; line-height: 1.55; }
+.md table { border-collapse: collapse; min-width: 28rem; }
+.md th, .md td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; }
+.md pre { overflow-x: auto; }
+.research-foot {
+  position: sticky;
+  bottom: calc(64px + env(safe-area-inset-bottom));
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  background: rgba(251, 247, 239, 0.96);
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+  z-index: 1;
+}
+.cross-row { padding: 8px 0; border-top: 1px solid var(--line); }
+.cross-row h3, .fund-card h3, .look-row + h3 { margin: 8px 0 4px; font-size: 16px; }

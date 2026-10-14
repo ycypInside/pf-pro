@@ -27,6 +27,7 @@ export async function renderPaper(main, ctx) {
         h('strong', {}, '這是紙上倉，不是真實持倉'),
         h('p', {}, 'A／B／C 只在這頁對照 0050 與 00631L，不計入淨值與配置。')),
       h('p', { class: 'hint' }, view.note),
+      view.stale ? h('p', { class: 'estimate' }, `估 ${view.staleNote}`) : null,
       result.ok ? null : h('p', { class: 'muted' }, result.error ? explainError(result.error.message) : '紙上倉資料還沒準備好。'),
       comparison(view),
       h('div', {}, view.sleeves.map(sleeveArticle))));
@@ -36,13 +37,13 @@ function comparison(view) {
   const series = [];
   for (const sleeve of view.sleeves) {
     const points = pointsOf(sleeve.series);
-    if (points.length) series.push({ name: `紙上倉 ${sleeve.sleeve}`, color: SLEEVE_COLOR[sleeve.sleeve], points });
+    if (points.length) series.push({ name: `${sleeve.stale ? '估 ' : ''}紙上倉 ${sleeve.sleeve}`, color: SLEEVE_COLOR[sleeve.sleeve], points });
   }
   for (const symbol of ['0050', '00631L']) {
     const bench = view.benchmarks[symbol];
     if (!bench) continue;
     const points = pointsOf(bench.series);
-    if (points.length) series.push({ name: symbol, color: BENCH_COLOR[symbol], points });
+    if (points.length) series.push({ name: `${bench.stale ? '估 ' : ''}${symbol}`, color: BENCH_COLOR[symbol], points });
   }
   return h('div', { class: 'paper-compare' },
     h('h3', {}, '對照 0050、00631L'),
@@ -66,13 +67,13 @@ function sleeveArticle(sleeve) {
       sleeve.tradingDays ? ` · 交易日 ${sleeve.tradingDays}` : '',
     ].join('')),
     h('div', { class: 'paper-metrics' },
-      metric('權益', money(sleeve.equity)),
-      metric('現金', money(sleeve.cash)),
-      metric('報酬', signed(sleeve.returnPct, '%')),
-      metric('回撤', signed(sleeve.drawdownPct, '%')),
-      metric('年化', signed(sleeve.annualizedPct, '%')),
-      metric('對 0050', signed(sleeve.vs0050, ' 百分點')),
-      metric('對 00631L', signed(sleeve.vs631, ' 百分點'))),
+      metric('權益', money(sleeve.equity), sleeve.stale),
+      metric('現金', money(sleeve.cash), sleeve.stale),
+      metric('報酬', signed(sleeve.returnPct, '%'), sleeve.stale),
+      metric('回撤', signed(sleeve.drawdownPct, '%'), sleeve.stale),
+      metric('年化', signed(sleeve.annualizedPct, '%'), sleeve.stale),
+      metric('對 0050', signed(sleeve.vs0050, ' 百分點'), sleeve.stale),
+      metric('對 00631L', signed(sleeve.vs631, ' 百分點'), sleeve.stale)),
     gateList(sleeve),
     positions.length
       ? h('details', { class: 'paper-pos' },
@@ -102,8 +103,8 @@ function positionLine(row) {
     Number.isFinite(Number(row.pnl_pct)) ? ` · ${signed(Number(row.pnl_pct), '%')}` : '');
 }
 
-function metric(label, value) {
-  return h('p', {}, `${label} ${value}`);
+function metric(label, value, stale) {
+  return h('p', { class: stale ? 'estimate' : '' }, `${stale ? '估 ' : ''}${label} ${value}`);
 }
 
 function money(value) {

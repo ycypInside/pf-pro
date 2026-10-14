@@ -3,7 +3,9 @@ import { renderAllocation } from './pages/allocation.js';
 import { renderCards } from './pages/cards.js';
 import { renderDashboard } from './pages/dashboard.js';
 import { renderEntry } from './pages/entry.js';
+import { renderFunds } from './pages/funds.js';
 import { renderPaper } from './pages/paper.js';
+import { renderRotation } from './pages/rotation.js';
 import { renderPlan } from './pages/plan.js';
 import { renderPerformance } from './pages/performance.js';
 import { renderRecords } from './pages/records.js';
@@ -16,6 +18,8 @@ const PAGES = {
   paper: { title: '紙上倉', render: renderPaper, icon: 'M5 7h14v12H5zM8 7V5h8v2' },
   performance: { title: '績效', render: renderPerformance, icon: 'M4 19V5M4 19h16M8 15l3.2-4 2.6 2.4L18 8' },
   allocation: { title: '配置', render: renderAllocation, icon: 'M12 5a7 7 0 1 0 .01 0M12 12V5M12 12l5 3' },
+  funds: { title: '基金成分', render: renderFunds, icon: 'M4 19V10M9 19V5M14 19v-6M19 19V8' },
+  rotation: { title: '個股分析', render: renderRotation, icon: 'M6 5h12v14H6zM6 9h12M9 3v4M15 3v4' },
   entry: { title: '記帳', render: renderEntry, icon: 'M12 5v14M5 12h14' },
   records: { title: '明細', render: renderRecords, icon: 'M8 7h11M8 12h11M8 17h11M5 7h.01M5 12h.01M5 17h.01' },
   settings: { title: '設定', render: renderSettings, icon: 'M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM12 3.5v2.2M12 18.3v2.2M4.8 6.2l1.6 1.6M17.6 16.2l1.6 1.6M3.5 12h2.2M18.3 12h2.2M4.8 17.8l1.6-1.6M17.6 7.8l1.6-1.6' },
