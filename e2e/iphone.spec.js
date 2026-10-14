@@ -57,7 +57,14 @@ const gets = {
   accounts: { ok: true, accounts: summary.accounts },
   assets: { ok: true, assets: [] },
   prices: { ok: true, quotes: [], stale: [], last_valuations: [] },
-  settings: { ok: true, settings: { categories_expense: ['餐飲', '交通'], categories_income: ['薪資'] } },
+  settings: {
+    ok: true,
+    settings: {
+      categories_expense: ['餐飲', '交通'],
+      categories_income: ['薪資'],
+      stale_days_overrides: { 'SI-145': 14, 'nav:USD': 21 },
+    },
+  },
   transactions: {
     ok: true,
     transactions: [
@@ -154,7 +161,15 @@ const gets = {
     ok: true,
     quotes: {
       '0050': { last: 180.25, change_pct: -0.012, spark: [170, 172, 175, 180.25], source: 'stored' },
-      4938: { last: 100, change_pct: 0.01, spark: [90, 95, 100], source: 'yahoo' },
+      4938: {
+        last: 100,
+        change_pct: 0.01,
+        spark: [90, 95, 100],
+        source: 'yahoo',
+        is_stale: true,
+        price_date: '2026-08-01',
+        stale_limit_days: 7,
+      },
     },
   },
   advice: {
@@ -162,6 +177,8 @@ const gets = {
     items: [
       { level: 'warn', title: '雇主持股集中', body: '不要顯示這則。', tag: 'employer' },
       { level: 'info', title: '現金緩衝', body: '可考慮把新收入留在現金。', tag: 'cash' },
+      { level: 'info', title: '價格過期', body: '請補上最新報價。', tag: 'stale' },
+      { level: 'info', title: '暫停定額', body: '現金偏低。', tag: 'dca_pause' },
     ],
     disclaimer: '以上內容由規則依你的資料與公開市場數據自動產生，只是參考方向，不構成投資建議，也不是買賣指示。',
   },
@@ -183,6 +200,9 @@ const gets = {
       sentiment_mode: 'defensive_when_hot',
       single_name_max: 0.1,
       employer_max: 0.05,
+      dca_exempt_enabled: true,
+      dca_core_assets: ['0050', 'VOO'],
+      dca_pause: { enabled: true, cash_pct_total: 0.08, net_cash_pct_nw: 0.02 },
     },
   },
   chart: {
@@ -298,6 +318,10 @@ test('設定 connects and stays inside the iPhone width', async ({ page }) => {
   await expect(page.getByText('連線成功')).toBeVisible();
   await expect(page.getByRole('heading', { name: '配置政策' })).toBeVisible();
   await expect(page.getByText('個股上限')).toBeVisible();
+  await expect(page.getByText('定額豁免')).toBeVisible();
+  await expect(page.getByText('0050、VOO')).toBeVisible();
+  await expect(page.getByText('過期天數覆寫')).toBeVisible();
+  await expect(page.getByText('SI-145：14 天、nav:USD：21 天')).toBeVisible();
   await expect(page.getByText('雇主')).toHaveCount(0);
   await fits(page, '設定');
 });
@@ -312,6 +336,11 @@ test('總覽 shows net worth and quick entry', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'AI 專家建議' })).toBeVisible();
   await expect(page.getByText('不構成投資建議')).toBeVisible();
   await expect(page.getByText('現金緩衝')).toBeVisible();
+  await expect(page.locator('.banner.err', { hasText: '價格過期' })).toBeVisible();
+  await expect(page.locator('.banner.err', { hasText: '暫停定額' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /和碩/ }).getByText('過期', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /和碩/ }).getByText('價格 2026-08-01 · 上限 7 天')).toBeVisible();
+  await expect(page.getByRole('button', { name: /元大台灣50/ }).getByText('過期', { exact: true })).toHaveCount(0);
   await expect(page.getByText('雇主持股')).toHaveCount(0);
   await expect(page.getByText('和碩')).toBeVisible();
   await expect(page.getByText('玉山集團')).toHaveCount(0);

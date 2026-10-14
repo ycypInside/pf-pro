@@ -10,13 +10,29 @@ function staleDaysMap_() {
     price: Number(s.stale_days_price || 3),
     nav: Number(s.stale_days_fund || 7),
     bond_valuation: Number(s.stale_days_bond || 45),
-    fx: Number(s.stale_days_price || 3)
+    fx: Number(s.stale_days_price || 3),
+    _over: staleOverrides_(s)
   };
 }
 
-function isStaleKind_(kind, dateStr, days) {
+/** Settings stale_days_overrides JSON: keys are a symbol (e.g. "SI-145") or "kind:CCY" (e.g. "nav:USD"). */
+function staleOverrides_(s) {
+  try {
+    var o = s.stale_days_overrides ? JSON.parse(s.stale_days_overrides) : {};
+    return o && typeof o === 'object' ? o : {};
+  } catch (e) { return {}; }
+}
+
+function staleLimit_(map, kind, symbol, currency) {
+  var o = map._over || {};
+  if (symbol && o[symbol] !== undefined) return Number(o[symbol]);
+  if (currency && o[kind + ':' + currency] !== undefined) return Number(o[kind + ':' + currency]);
+  return map[kind] !== undefined ? map[kind] : map.price;
+}
+
+function isStaleKind_(kind, dateStr, days, symbol, currency) {
   var map = days || staleDaysMap_();
-  var limit = map[kind] !== undefined ? map[kind] : map.price;
+  var limit = staleLimit_(map, kind, symbol, currency);
   return daysBetween_(dateStr, today_()) > limit;
 }
 
@@ -106,7 +122,7 @@ function computeHoldings_() {
     var ccy = asset.currency || (quote ? quote.currency : '');
     var price = quote ? num_(quote.value) : null;
     var priceDate = quote ? fmtDate_(quote.date) : '';
-    var stale = quote ? isStaleKind_(quote.kind, quote.date, days) : true;
+    var stale = quote ? isStaleKind_(quote.kind, quote.date, days, quote.symbol, quote.currency) : true;
     var fx = latestFxFromIndex_(ccy, idx);
     var fxRate = fx ? fx.value : null;
     var u = pfUnrealized(b, price, fxRate);
@@ -261,7 +277,8 @@ function pricesPayload_() {
       value: num_(p.value),
       currency: p.currency,
       source: p.source,
-      is_stale: isStaleKind_(p.kind, date, days),
+      is_stale: isStaleKind_(p.kind, date, days, p.symbol, p.currency),
+      stale_limit_days: staleLimit_(days, p.kind, p.symbol, p.currency),
       note: p.note || ''
     };
   });
@@ -343,7 +360,7 @@ function actionAddPrice_(d, ctx) {
     currency: d.currency,
     source: source,
     fetched_at: nowIso_(),
-    is_stale: isStaleKind_(d.kind, d.date),
+    is_stale: isStaleKind_(d.kind, d.date, null, symbol, d.currency),
     note: d.note ? String(d.note).slice(0, 200) : ''
   };
   appendRecord_('Prices_FX', rec);

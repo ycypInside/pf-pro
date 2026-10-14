@@ -67,8 +67,11 @@ function doGet(e) {
   try {
     beginRequest_();
     var p = requestParams_(e);
-    var auth = decideAuth_(p.token, scriptProp_('API_TOKEN'));
+    var ra = decideReadAuth_(p.token);
+    var auth = ra.auth;
     if (auth) return json_({ ok: false, error: auth.error, reason: auth.reason });
+    // A read-only token never answers redirected POSTs: say so instead of parse_error.
+    if (ra.role === 'readonly' && lostPostBody_(p)) return json_({ ok: false, error: 'forbidden', reason: 'readonly_token' });
     // Redirected POSTs arrive here with a query token and no q. Do not answer unknown q.
     if (lostPostBody_(p)) return json_({ ok: false, error: 'parse_error', reason: 'lost_body' });
     if (p.q === 'health') return json_({ ok: true, schema_version: settings_().schema_version, at: nowIso_() });
@@ -97,6 +100,7 @@ function routeGet_(p) {
     case 'quotes': return quotesPayload_();
     case 'chart': return chartPayload_(String(p.asset || p.symbol || ''));
     case 'advice': return advicePayload_();
+    case 'finance_summary': return financeSummaryPayload_();
     case 'income_expense':
     case 'incomeexpense': return { ok: true, report: incomeExpense_(p.from, p.to) };
     case 'checks': return { ok: true, warnings: dailyChecks_() };
@@ -158,6 +162,16 @@ var ACTIONS = {
     return { ids: [rec.account_id] };
   },
 
+  /** Stores only the SHA-256 of a read-only token. Full token required (POST). */
+  set_readonly_token_hash: function (d, ctx) {
+    var h = String(d.sha256 || '').trim().toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(h)) fail_('V1', 'sha256 must be 64 hex chars');
+    PropertiesService.getScriptProperties().setProperty('API_TOKEN_RO_SHA256', h);
+    try { CacheService.getScriptCache().remove('pf:prop:API_TOKEN_RO_SHA256'); } catch (e) {}
+    audit_(ctx, 'config_change', 'Settings', 'API_TOKEN_RO_SHA256', null, { set: true });
+    return { ids: ['API_TOKEN_RO_SHA256'] };
+  },
+
   update_account: function (d, ctx) {
     if (!d.account_id) fail_('V1', 'missing account_id');
     var a = accountsById_()[d.account_id];
@@ -181,6 +195,15 @@ var ACTIONS = {
       var inactive = d.active === false || String(d.active).toUpperCase() === 'FALSE';
       if (!active && !inactive) fail_('V1', 'bad active');
       patch.status = active ? 'active' : 'closed';
+    }
+    if (d.institution !== undefined && d.institution !== '') patch.institution = String(d.institution).trim();
+    if (d.parent_account_id !== undefined) {
+      var pid = String(d.parent_account_id || '').trim();
+      if (pid) {
+        if (pid === d.account_id) fail_('V1', 'parent cannot be self');
+        if (!accountsById_()[pid]) fail_('V1', 'unknown parent_account_id');
+      }
+      patch.parent_account_id = pid;
     }
     if (!Object.keys(patch).length) fail_('V1', 'nothing to update');
     var before = strip_(a);
