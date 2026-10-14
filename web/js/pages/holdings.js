@@ -43,8 +43,14 @@ export function renderHoldings(holdings, quotes, names) {
   }
 }
 
+function quoted(text, stale) {
+  return stale ? `估 ${text}` : text;
+}
+
 function quoteRow(row) {
   const tone = quoteTone(row.change_pct);
+  const stale = row.is_stale;
+  const toneClass = stale ? 'estimate num' : tone === 'up' ? 'tw-up num' : tone === 'down' ? 'tw-down num' : 'muted num';
   return h('button', {
     type: 'button',
     class: 'quote-row',
@@ -53,21 +59,21 @@ function quoteRow(row) {
   h('span', { class: 'quote-top' },
     h('span', { class: 'quote-name' },
       h('strong', {}, row.name),
-      row.is_stale ? h('span', { class: 'tag stale' }, '過期') : null),
-    h('span', { class: tone === 'up' ? 'tw-up num' : tone === 'down' ? 'tw-down num' : 'muted num' }, formatPct(row.change_pct))),
+      stale ? h('span', { class: 'tag stale' }, '過期') : null),
+    h('span', { class: toneClass }, quoted(formatPct(row.change_pct), stale))),
   h('span', { class: 'quote-sub' },
-    h('span', { class: 'muted' }, `${row.symbol} · ${formatMoney(row.price, row.currency)}`),
-    sparkline(row.spark, tone)),
-  row.is_stale ? h('span', { class: 'muted quote-stale' }, `價格 ${row.price_date || '—'} · 上限 ${row.stale_limit_days == null ? '—' : row.stale_limit_days} 天`) : null,
+    h('span', { class: stale ? 'estimate' : 'muted' }, `${row.symbol} · ${quoted(formatMoney(row.price, row.currency), stale)}`),
+    sparkline(row.spark, stale ? 'flat' : tone)),
+  stale ? h('span', { class: 'muted quote-stale' }, `價格 ${row.price_date || '—'} · 上限 ${row.stale_limit_days == null ? '—' : row.stale_limit_days} 天`) : null,
   h('span', { class: 'quote-metrics' },
     metric('成本', formatTwd(row.cost)),
-    metric('市值', formatTwd(row.value)),
-    metric('損益', formatPct(row.pl_pct), tone),
+    metric('市值', quoted(formatTwd(row.value), stale), stale ? 'stale' : ''),
+    metric('損益', quoted(formatPct(row.pl_pct), stale), stale ? 'stale' : tone),
     metric('比重', formatPct(row.weight).replace('+', ''))));
 }
 
 function metric(label, value, tone) {
-  const klass = tone === 'up' ? 'tw-up' : tone === 'down' ? 'tw-down' : '';
+  const klass = tone === 'up' ? 'tw-up' : tone === 'down' ? 'tw-down' : tone === 'stale' ? 'estimate' : '';
   return h('span', {},
     h('span', { class: 'muted' }, label),
     h('span', { class: `num ${klass}` }, value));

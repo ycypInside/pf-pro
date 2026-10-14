@@ -495,6 +495,7 @@ function financeSummaryPayload_() {
   return {
     ok: true, at: nowIso_(), as_of: today_(),
     net_worth: bal.net_worth,
+    nw_day_change: nwDayChange_(),
     institutions: bal.institutions,
     allocation: { total_twd: alloc.total_twd, band_pct: alloc.band_pct, target: alloc.target, rows: alloc.rows,
       estimated: alloc.estimated, sentiment: alloc.sentiment, sentiment_mode: pol.sentiment_mode,

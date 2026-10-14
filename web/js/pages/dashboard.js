@@ -1,8 +1,9 @@
 import { hasConfig, tryGet } from '../api.js';
 import { h, mount } from '../dom.js';
-import { formatRate, formatTwd } from '../format.js';
+import { formatPct, formatRate, formatTwd } from '../format.js';
 import { kindLabel } from '../labels.js';
 import { explainError, netWorth, splitCategories, taipeiMonth, withTwd } from '../money.js';
+import { dayChange, decisionView, pathProgress, wanLabel } from '../p1.js';
 import { entryQuery, readTemplates } from '../prefs.js';
 import { renderAccountGroups } from './accounts.js';
 import { adviceCard } from './advice.js';
@@ -17,7 +18,7 @@ export async function renderDashboard(main, ctx) {
   main.append(h('p', { class: 'muted' }, '讀取中…'));
   const month = taipeiMonth();
   const loaded = await loadOverview(month);
-  const { accountsR, balancesR, incomeR, checksR, pricesR, holdingsR, quotesR, adviceR, alertsR } = loaded;
+  const { accountsR, balancesR, incomeR, checksR, pricesR, holdingsR, quotesR, adviceR, alertsR, planR, decisionsR } = loaded;
   if (!ctx.alive()) return;
   main.replaceChildren();
   const fatal = [accountsR, balancesR, incomeR, checksR].find((item) => !item.ok);
@@ -43,12 +44,22 @@ export async function renderDashboard(main, ctx) {
   const known = new Set(accounts.map((account) => account.account_id));
   const templates = readTemplates(localStorage).filter((item) => !item.account_id || known.has(item.account_id));
 
+  const quoteBook = quotesR.ok ? quotesR.data.quotes : {};
+  const decisionData = decisionsR && decisionsR.ok ? decisionsR.data : null;
+  const decisions = decisionView(decisionData);
+  const planData = planR && planR.ok ? planR.data : null;
+  const change = dayChange(decisionData) || dayChange(planData);
+  const path = pathProgress(planData);
+
   mount(main,
+    section('待您決定', decisionsBody(decisions)),
     h('section', { class: 'hero' },
       h('div', { class: 'hero-top' },
         h('p', { class: 'eyebrow' }, '淨資產 · 台幣'),
         h('button', { type: 'button', class: 'text-btn', onClick: () => ctx.reload() }, '重新整理')),
       h('p', { class: 'net num' }, formatTwd(summary.net_worth_twd)),
+      changeLine(change),
+      pathBar(path),
       h('dl', { class: 'split' },
         stat('資產', formatTwd(summary.total_assets_twd)),
         stat('負債', formatTwd(summary.total_liabilities_twd)),
@@ -66,7 +77,7 @@ export async function renderDashboard(main, ctx) {
       ? renderAccountGroups(balancesR.data.balances || rawBalances, accounts, balancesR.data.institutions || [], localStorage)
       : renderAccountGroups(rawBalances, accounts, [], localStorage)),
     section(`${month.label}收支`, incomeR.ok ? incomeBlock(report, categories) : failNote(incomeR)),
-    section('持倉', renderHoldings(holdingsR.ok ? (holdingsR.data.holdings || holdings) : holdings, quotesR.ok ? quotesR.data.quotes : {}, names)),
+    section('持倉', renderHoldings(holdingsR.ok ? (holdingsR.data.holdings || holdings) : holdings, quoteBook, names)),
     section('報價與最後估值日', pricesR.ok ? priceBlock(pricesR.data) : failNote(pricesR, '報價')),
     section('資料檢查', checksR.ok ? checkBlock(checksR.data.warnings || []) : failNote(checksR)));
 }
@@ -84,13 +95,15 @@ function templateChips(templates, names, ctx) {
 }
 
 async function loadOverview(month) {
-  const [summary, balances, quotes, advice, holdings, alerts] = await Promise.all([
+  const [summary, balances, quotes, advice, holdings, alerts, plan, decisions] = await Promise.all([
     tryGet('summary', { from: month.from, to: month.to }),
     tryGet('balances'),
     tryGet('quotes'),
     tryGet('advice'),
     tryGet('holdings'),
     tryGet('alerts'),
+    tryGet('plan'),
+    tryGet('decisions'),
   ]);
   if (summary.ok) {
     const data = summary.data;
@@ -107,6 +120,8 @@ async function loadOverview(month) {
       quotesR: quotes,
       adviceR: advice,
       alertsR: alerts,
+      planR: plan,
+      decisionsR: decisions,
     };
   }
   if (summary.error && summary.error.message === 'unknown q') {
@@ -118,7 +133,10 @@ async function loadOverview(month) {
       tryGet('prices'),
       tryGet('holdings'),
     ]);
-    return { accountsR, balancesR, incomeR, checksR, pricesR, holdingsR, quotesR: quotes, adviceR: advice, alertsR: alerts };
+    return {
+      accountsR, balancesR, incomeR, checksR, pricesR, holdingsR, quotesR: quotes, adviceR: advice, alertsR: alerts,
+      planR: plan, decisionsR: decisions,
+    };
   }
   return {
     accountsR: summary,
@@ -130,7 +148,44 @@ async function loadOverview(month) {
     quotesR: quotes,
     adviceR: advice,
     alertsR: alerts,
+    planR: plan,
+    decisionsR: decisions,
   };
+}
+
+function decisionsBody(decisions) {
+  const note = h('p', { class: 'hint' }, decisions.disclaimer || '待決事項僅為提醒，不是操作單。');
+  if (!decisions.known) {
+    return h('div', {}, h('p', { class: 'muted' }, '讀不到待決定事項。'), note);
+  }
+  if (!decisions.count) {
+    return h('div', {}, h('p', { class: 'ok-text' }, '今天無事'), note);
+  }
+  return h('div', {},
+    decisions.items.map((item) => h('article', { class: `decision decision-${item.kind}` },
+      h('p', {}, item.title),
+      item.detail ? h('p', { class: 'muted' }, item.detail) : null)),
+    note);
+}
+
+function changeLine(change) {
+  if (!change) return null;
+  const twd = Number.isFinite(change.twd) ? formatTwd(change.twd) : '—';
+  const pct = Number.isFinite(change.pct) ? formatPct(change.pct) : '—';
+  const tone = !Number.isFinite(change.twd) ? '' : change.twd < 0 ? 'down' : change.twd > 0 ? 'up' : '';
+  const span = change.prevDate && change.date ? ` ${change.prevDate} → ${change.date}` : '';
+  return h('p', { class: `day-change ${tone}` }, `較前一日 ${twd}（${pct}）${span}`);
+}
+
+function pathBar(path) {
+  if (!path || !Number.isFinite(path.start) || !Number.isFinite(path.target)) return null;
+  const ratio = Number.isFinite(path.ratio) ? path.ratio : 0;
+  const width = Math.max(0, Math.min(1, ratio)) * 100;
+  const state = ratio >= 1 ? '已超過第一年' : ratio < 0 ? '還沒回到起點' : `完成 ${Math.round(ratio * 100)}%`;
+  return h('div', { class: 'path' },
+    h('p', { class: 'path-label' }, `路徑 D ${wanLabel(path.start)} → 第一年 ${wanLabel(path.target)}`),
+    h('div', { class: 'path-track' }, h('span', { class: 'path-fill', style: `width:${width}%` })),
+    h('p', { class: 'path-label' }, state));
 }
 
 function needConfig(ctx) {

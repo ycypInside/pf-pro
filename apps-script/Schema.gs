@@ -303,3 +303,4 @@ var ENUMS = {
 SCHEMA.Plan = ['plan_id', 'track', 'label', 'year', 'target_date', 'target_twd', 'baseline_date', 'baseline_twd', 'monthly_twd', 'cagr', 'status', 'note', 'updated_at'];
 SCHEMA.DCA = ['dca_id', 'asset_id', 'symbol', 'name', 'account_id', 'currency', 'amount', 'debit_day', 'start_date', 'status', 'last_debit_date', 'core', 'note', 'updated_at'];
 SCHEMA.Holding_Rules = ['rule_key', 'card_key', 'card_name', 'card_class', 'asset_ids', 'card_status', 'rule_id', 'type', 'level', 'pct', 'date', 'confirm_days', 'grp', 'tier', 'info', 'action', 'reason', 'seed_peak', 'events', 'card_note', 'status', 'updated_at'];
+SCHEMA.Paper_Daily = ['row_id', 'date', 'sleeve', 'kind', 'label', 'capital_twd', 'equity_twd', 'cash_twd', 'return_pct', 'drawdown_pct', 'max_dd_pct', 'trading_days', 'cash_pct', 'n_positions', 'vs_0050_pp', 'vs_00631L_pp', 'gate_target_pct', 'gate_json', 'flags', 'positions_json', 'status', 'updated_at'];

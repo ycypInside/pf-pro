@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 const token = ['mock', 'ledger', 'token'].join('-');
 const apiUrl = 'https://example.com/exec';
-const nav = ['總覽', '計畫', '績效', '配置', '記帳', '明細', '設定'];
+const nav = ['總覽', '計畫', '持股卡', '紙上倉', '績效', '配置', '記帳', '明細', '設定'];
 
 const summary = {
   ok: true,
@@ -230,8 +230,38 @@ const gets = {
     ok: true,
     as_of: '2026-10-14',
     net_worth_twd: 98765432.1,
+    path_d: {
+      start_twd: 14020000,
+      start_date: '2026-09-16',
+      year1_target_twd: 16540000,
+      year1_date: '2027-09-16',
+      actual_twd: 15000000,
+      progress_pct: (15000000 - 14020000) / (16540000 - 14020000),
+      remaining_twd: 1540000,
+    },
+    nw_day_change: {
+      change_twd: -12345.6,
+      change_pct: -0.000125,
+      date: '2026-10-14',
+      prev_date: '2026-10-13',
+    },
     note: '計畫值以基期淨值、月投入與年化報酬（月複利）推算；實際值為目前淨值（含非計畫內資產）。',
     tracks: [
+      {
+        track: 'D',
+        label: '路徑 D',
+        baseline_date: '2026-01-01',
+        baseline_twd: 14020000,
+        monthly_twd: 80000,
+        cagr: 0.08,
+        milestones: [{ year: 1, target_date: '2027-01-01', target_twd: 16540000, note: '第一年' }],
+        plan_now_twd: 14800000,
+        actual_twd: 98765432.1,
+        gap_twd: 83965432.1,
+        gap_pct: 5.67,
+        next_milestone: { year: 1, target_date: '2027-01-01', target_twd: 16540000, note: '第一年' },
+        on_track: true,
+      },
       {
         track: 'main',
         label: '主計畫',
@@ -281,9 +311,10 @@ const gets = {
     ok: true,
     disclaimer: '依持股卡規則與公開價格自動比對；僅為檢討提醒，不是操作單。',
     alerts: [
-      { level: 'red', name: '元大台灣50', action: '檢視部位', reason: '收盤低於規則線', detail: '收盤 180 / 線 190' },
+      { level: 'red', type: 'close_below', name: '元大台灣50', card_key: 'tw', action: '檢視部位', reason: '收盤低於規則線', detail: '收盤 180 / 線 190，連續 1/3 日' },
       { level: 'amber', name: '和碩', action: '只做紀錄', reason: '接近財報', detail: '觀察中' },
-      { level: 'watch', name: '元大台灣50', action: '再看一天', reason: '尚未連續確認', detail: '1/2 日' },
+      { level: 'amber', type: 'trade_ticket', name: '賣出單', action: '確認交易單', reason: '還沒送出', detail: '1 筆' },
+      { level: 'watch', name: '元大台灣50', card_key: 'tw', action: '再看一天', reason: '尚未連續確認', detail: '連續 1/3 日' },
       { level: 'upcoming', name: '和碩', action: '日期將到', reason: '規則日期接近', detail: '2026-10-20' },
       { level: 'info', name: '元大台灣50', action: '例行檢視', reason: '資訊型規則', detail: '提示用' },
     ],
@@ -297,7 +328,10 @@ const gets = {
         asset_ids: ['0050'],
         status: 'active',
         note: '核心部位',
-        rules: [{ rule_key: 'r1', type: 'close_below', level: 175, action: '回到這條線時檢視部位', reason: '收盤低於規則價', status: 'active' }],
+        rules: [
+          { rule_key: 'r1', type: 'close_below', level: 175, confirm_days: 3, action: '回到這條線時檢視部位', reason: '收盤低於規則價', status: 'active' },
+          { rule_key: 'r2', type: 'date_reached', date: '2026-11-15', action: '論點檢討', reason: '到日回頭看論點', status: 'active' },
+        ],
       },
       {
         card_key: 'peg',
@@ -321,6 +355,107 @@ const gets = {
     estimated: [],
     missing_fx: [],
     sentiment: { heat: 0.62, label: '偏樂觀', inputs: 3 },
+  },
+  decisions: {
+    ok: true,
+    count: 3,
+    items: [
+      { kind: 'exit_line', level: 'red', title: '元大台灣50：檢視部位', detail: '收盤低於規則線', ref: 'r1' },
+      { kind: 'dca_paused', level: 'amber', title: '現金煞車：暫停定額', detail: '現金佔比低於煞車門檻', ref: 'dca-00646' },
+      { kind: 'stale_quote', level: 'info', title: '和碩 報價過期', detail: '報價日 2026-08-01，上限 7 天', ref: '4938' },
+    ],
+    exit_lines: [],
+    dca_paused: true,
+    dca_paused_items: [],
+    cash_brake: { enabled: true, triggered: true, reason: '現金佔比低於煞車門檻' },
+    stale_quotes: [],
+    trade_tickets: [],
+    nw_day_change: {
+      change_twd: -12345.6,
+      change_pct: -0.000125,
+      date: '2026-10-14',
+      prev_date: '2026-10-13',
+    },
+    disclaimer: '待決事項僅為提醒，不是操作單。',
+  },
+  paper: {
+    ok: true,
+    mode: 'paper',
+    note: '模擬倉，與實際持倉完全分開，不計入淨值與配置。年化以 252 交易日換算，交易日不足 20 日時僅供參考。',
+    sleeves: [
+      {
+        sleeve: 'A',
+        label: '紙上倉 A',
+        status: 'paper',
+        as_of: '2026-10-13',
+        capital_twd: 1000000,
+        equity_twd: 1050000,
+        cash_twd: 200000,
+        cash_pct: 19.05,
+        return_pct: 5,
+        drawdown_pct: -1.2,
+        max_dd_pct: -3.4,
+        trading_days: 12,
+        trading_days_required: 20,
+        trading_days_label: '12/20',
+        annualized_pct: 18.2,
+        annualized_target_pct: 21.71,
+        annualized_ok: false,
+        vs_0050_pp: 1.5,
+        vs_00631L_pp: -0.4,
+        n_positions: 1,
+        positions: [{
+          code: '2330',
+          name: '台積電',
+          industry: '半導體',
+          qty: 10,
+          entry: 900,
+          last: 950,
+          pnl_pct: 5.56,
+          mv: 9500,
+          stop_price: 850,
+          take_profit_price: 1100,
+          held_trading_days: 8,
+          in_disposition: false,
+        }],
+        flags: [],
+        gate: {
+          target: 21.71,
+          min_trading_days: 20,
+          checks: [
+            { label: '交易日', current: '12/20', ok: false },
+            { label: '年化', current: '18.20%', ok: true },
+          ],
+          go_live_allowed: false,
+        },
+        series: [
+          { date: '2026-10-01', return_pct: 0, equity_twd: 1000000, drawdown_pct: 0 },
+          { date: '2026-10-13', return_pct: 5, equity_twd: 1050000, drawdown_pct: -1.2 },
+        ],
+      },
+    ],
+    benchmarks: {
+      50: {
+        symbol: '50',
+        as_of: '2026-10-13',
+        return_pct: 3.5,
+        max_dd_pct: -4,
+        series: [
+          { date: '2026-10-01', return_pct: 0 },
+          { date: '2026-10-13', return_pct: 3.5 },
+        ],
+      },
+      '00631L': {
+        symbol: '00631L',
+        as_of: '2026-10-13',
+        return_pct: 5.4,
+        max_dd_pct: -6,
+        series: [
+          { date: '2026-10-01', return_pct: 0 },
+          { date: '2026-10-13', return_pct: 5.4 },
+        ],
+      },
+    },
   },
 };
 
@@ -418,10 +553,19 @@ test('總覽 shows net worth and quick entry', async ({ page }) => {
   await expect(page.getByRole('button', { name: '轉帳' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'AI 專家建議' })).toBeVisible();
   await expect(page.getByText('不構成投資建議')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '待您決定' })).toBeVisible();
+  await expect(page.locator('.decision-exit_line')).toContainText('元大台灣50：檢視部位');
+  await expect(page.locator('.decision-dca_paused')).toContainText('現金煞車：暫停定額');
+  await expect(page.locator('.decision-stale_quote')).toContainText('和碩 報價過期');
+  await expect(page.getByText('今天無事')).toHaveCount(0);
+  await expect(page.locator('section', { has: page.getByRole('heading', { name: '待您決定' }) })).toContainText('不是操作單');
+  await expect(page.getByText('較前一日 −NT$12,345.60（−0.01%） 2026-10-13 → 2026-10-14')).toBeVisible();
+  await expect(page.getByText('路徑 D 1,402萬 → 第一年 1,654萬')).toBeVisible();
+  await expect(page.getByText('完成 39%')).toBeVisible();
   await expect(page.getByRole('heading', { name: '檢討提醒' })).toBeVisible();
-  await expect(page.getByText('不是操作單')).toBeVisible();
+  await expect(page.getByText('不是操作單')).toHaveCount(2);
   await expect(page.locator('article.alert-red')).toContainText('檢視部位');
-  await expect(page.locator('article.alert-amber')).toContainText('只做紀錄');
+  await expect(page.locator('article.alert-amber', { hasText: '只做紀錄' })).toBeVisible();
   await expect(page.locator('article.alert-watch')).toContainText('再看一天');
   await expect(page.locator('article.alert-upcoming')).toContainText('日期將到');
   await expect(page.locator('article.alert-info')).toContainText('例行檢視');
@@ -431,6 +575,8 @@ test('總覽 shows net worth and quick entry', async ({ page }) => {
   await expect(page.getByRole('button', { name: /和碩/ }).getByText('過期', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /和碩/ }).getByText('價格 2026-08-01 · 上限 7 天')).toBeVisible();
   await expect(page.getByRole('button', { name: /元大台灣50/ }).getByText('過期', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /元大台灣50/ }).locator('.estimate')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /和碩/ }).locator('.estimate').first()).toContainText('估');
   await expect(page.getByText('雇主持股')).toHaveCount(0);
   await expect(page.getByRole('button', { name: /和碩/ })).toBeVisible();
   await expect(page.getByText('玉山集團')).toHaveCount(0);
@@ -519,6 +665,9 @@ test('配置 shows weights', async ({ page }) => {
 test('計畫 shows both tracks, gaps, and the DCA card', async ({ page }) => {
   await page.goto('/#/plan');
   await expect(page.getByRole('img', { name: '計畫與實際淨值' })).toBeVisible();
+  await expect(page.getByText(/路徑 D 自 1,402萬/)).toBeVisible();
+  await expect(page.getByText(/上億差距/)).toBeVisible();
+  await expect(page.getByText('本月定額：已扣款 1、待扣款 2、煞車暫停 1')).toBeVisible();
   await expect(page.locator('.acct-name', { hasText: '主計畫' })).toBeVisible();
   await expect(page.locator('.acct-name', { hasText: '挑戰上億' })).toBeVisible();
   await expect(page.getByText('第一個目標')).toBeVisible();
@@ -531,7 +680,7 @@ test('計畫 shows both tracks, gaps, and the DCA card', async ({ page }) => {
   await expect(page.getByText('每月上限 200 美元；每月一次')).toBeVisible();
   await expect(page.getByText('每月上限 8,000；每月一次')).toBeVisible();
   await expect(page.getByText('每月上限 5,000；每季')).toBeVisible();
-  await expect(page.getByText('煞車暫停')).toBeVisible();
+  await expect(page.getByText('煞車暫停', { exact: true })).toBeVisible();
   const pending = page.locator('.dca-item').filter({ hasText: '每月上限 1 萬' });
   await pending.getByRole('button', { name: '標記已扣款' }).click();
   await expect(pending.getByText('已扣款')).toBeVisible();
@@ -544,4 +693,95 @@ test('計畫 shows both tracks, gaps, and the DCA card', async ({ page }) => {
   expect(href.searchParams.get('token')).toBe(token);
   expect(href.searchParams.get('m')).toBe('post');
   await fits(page, '計畫');
+});
+
+test('nav matches the column at 1280 and 375', async ({ page }) => {
+  for (const width of [1280, 375]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto('/#/overview');
+    await expect(page.getByRole('heading', { level: 1, name: '總覽' })).toBeVisible();
+    const box = await page.evaluate(async (labels) => {
+      const app = document.querySelector('.app').getBoundingClientRect();
+      const nav = document.querySelector('.nav');
+      const navBox = nav.getBoundingClientRect();
+      const reached = [];
+      for (const label of labels) {
+        const link = [...nav.querySelectorAll('a')].find((node) => node.textContent.includes(label));
+        link.scrollIntoView({ inline: 'center', block: 'nearest' });
+        const linkBox = link.getBoundingClientRect();
+        const now = nav.getBoundingClientRect();
+        reached.push(linkBox.width > 8 && linkBox.left >= now.left - 1 && linkBox.right <= now.right + 1);
+      }
+      return {
+        appWidth: app.width,
+        navWidth: navBox.width,
+        appLeft: app.left,
+        navLeft: navBox.left,
+        navBottom: nav.getBoundingClientRect().bottom,
+        innerHeight: window.innerHeight,
+        pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        reached,
+      };
+    }, nav);
+    expect(Math.abs(box.navWidth - box.appWidth)).toBeLessThanOrEqual(1);
+    expect(Math.abs(box.navLeft - box.appLeft)).toBeLessThanOrEqual(1);
+    expect(box.navBottom).toBeGreaterThan(box.innerHeight * 0.85);
+    expect(box.pageOverflow).toBeLessThanOrEqual(1);
+    expect(box.reached.every(Boolean)).toBe(true);
+  }
+});
+
+test('持股卡 shows price, exit distance, day count, and thesis date', async ({ page }) => {
+  await page.goto('/#/cards');
+  await expect(page.locator('.acct-name', { hasText: '台灣50卡' })).toBeVisible();
+  await expect(page.getByText('180.25 TWD').first()).toBeVisible();
+  await expect(page.getByText('出場線 175.00 TWD')).toBeVisible();
+  await expect(page.getByText('第 1/3 日')).toBeVisible();
+  await expect(page.getByText('論點檢討 2026-11-15')).toBeVisible();
+  await expect(page.getByText('不是操作單')).toBeVisible();
+  const pegatron = page.locator('article').filter({ hasText: '和碩卡' });
+  await expect(pegatron.locator('.estimate')).toContainText('估');
+  await fits(page, '持股卡');
+});
+
+test('待您決定 shows 今天無事 when the count is zero', async ({ page }) => {
+  const saved = gets.decisions;
+  gets.decisions = {
+    ok: true,
+    count: 0,
+    items: [],
+    trade_tickets: [],
+    nw_day_change: { change_twd: null, change_pct: null, date: '2026-10-14', prev_date: null },
+    disclaimer: '待決事項僅為提醒，不是操作單。',
+  };
+  try {
+    await page.goto('/#/overview');
+    await expect(page.getByText('今天無事')).toBeVisible();
+    await expect(page.getByText('不是操作單').first()).toBeVisible();
+    await expect(page.getByText('較前一日 —（—）')).toBeVisible();
+  } finally {
+    gets.decisions = saved;
+  }
+});
+
+test('紙上倉 stays separate from real holdings', async ({ page }) => {
+  await page.goto('/#/paper');
+  await expect(page.getByText('這是紙上倉，不是真實持倉')).toBeVisible();
+  await expect(page.getByText('不計入淨值與配置').first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: '紙上倉 A' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '紙上倉 B' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '紙上倉 C' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '對照 0050、00631L' })).toBeVisible();
+  await expect(page.getByRole('img', { name: '紙上倉與 0050、00631L' })).toBeVisible();
+  await expect(page.locator('.paper-compare .legend')).toContainText('0050');
+  await expect(page.locator('.paper-compare .legend')).toContainText('00631L');
+  await expect(page.getByText('✗ 還不能上線')).toBeVisible();
+  await expect(page.getByText('✗ 交易日 12/20')).toBeVisible();
+  await expect(page.getByText('✓ 年化 18.20%')).toBeVisible();
+  await expect(page.getByText('尚無紙上部位').first()).toBeVisible();
+  await page.getByText('部位 1').click();
+  await expect(page.getByText('2330 台積電')).toBeVisible();
+  await expect(page.getByText('元大台灣50')).toHaveCount(0);
+  await expect(page.getByText('NT$98,765,432.10')).toHaveCount(0);
+  await fits(page, '紙上倉');
 });
