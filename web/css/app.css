@@ -337,6 +337,7 @@ input:read-only { background: #f3eee4; }
 dialog.sheet {
   width: min(560px, 100%);
   max-height: min(88dvh, 720px);
+  overflow: auto;
   margin: auto auto 0;
   border: 0;
   border-radius: 20px 20px 0 0;
@@ -449,6 +450,29 @@ dialog.sheet::backdrop { background: rgba(22, 32, 28, 0.45); }
 .quote-metrics .num { overflow-wrap: anywhere; }
 .spark { width: 64px; height: 24px; flex: 0 0 auto; }
 .price-canvas { width: 100%; height: 220px; display: block; }
+.levels { margin-top: 12px; }
+.levels h3 { margin: 0 0 4px; font-size: 16px; }
+.level-summary { margin: 0 0 8px; line-height: 1.45; overflow-wrap: anywhere; }
+.level-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.level-table caption.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+.level-table th,
+.level-table td { padding: 6px 4px; text-align: left; vertical-align: baseline; }
+.level-table thead th:nth-child(2),
+.level-table thead th:nth-child(3),
+.level-table td.num { text-align: right; white-space: nowrap; }
+.level-table thead th:first-child { width: 32%; }
+.level-now th,
+.level-now td { background: var(--dup); }
+.level-note td { color: var(--muted); font-size: 13px; line-height: 1.45; padding-top: 0; overflow-wrap: anywhere; }
 .gauge {
   height: 10px;
   border-radius: 99px;
