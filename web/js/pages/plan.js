@@ -6,10 +6,14 @@ import { explainError, taipeiMonth } from '../money.js';
 import {
   canMarkDebited,
   dcaRows,
+  dcaStatusLine,
   debitDayLabel,
   monthStateLabel,
+  pathProgress,
   planPoints,
   trackLabel,
+  wanLabel,
+  yiTrack,
 } from '../p1.js';
 import { createPoster, outcomeView } from '../submit.js';
 
@@ -60,11 +64,24 @@ function planSection(result) {
     : [];
   return h('section', { class: 'card' },
     h('h2', {}, '淨值計畫'),
+    pathNote(pathProgress(tracks, data.net_worth_twd)),
+    yiNote(yiTrack(tracks)),
     data.note ? h('p', { class: 'hint' }, data.note) : null,
     series.length
       ? lineChart(series, { label: '計畫與實際淨值', compact: true, markers })
       : h('p', { class: 'muted' }, '資料點不足，還畫不出曲線。'),
     tracks.map(trackCard));
+}
+
+function pathNote(path) {
+  if (!path) return h('p', { class: 'muted' }, '還沒有路徑 D。');
+  const state = Number.isFinite(path.ratio) && path.ratio >= 1 ? '已超過第一年。' : '';
+  return h('p', {}, `路徑 D 自 ${wanLabel(path.start)} 走向第一年 ${wanLabel(path.target)}，目前 ${wanLabel(path.actual)}。${state}`);
+}
+
+function yiNote(track) {
+  if (!track) return null;
+  return h('p', {}, `上億差距 ${formatTwd(track.gap_twd)}（${formatPct(track.gap_pct)}）`);
 }
 
 function trackCard(track) {
@@ -99,6 +116,7 @@ function dcaSection(result) {
   function draw() {
     root.replaceChildren(
       h('h2', {}, '定額'),
+      h('p', {}, dcaStatusLine(items)),
       data.note ? h('p', { class: 'hint' }, data.note) : null,
       brakeBanner(data.brake),
       notice,
