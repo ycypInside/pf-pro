@@ -6,7 +6,7 @@ var PF_EMPLOYER_SYMBOL = '4938';
 var PF_DEFAULT_POLICY = {
   equity_max: 0.90, equity_min: 0.80, bond_max: 0.05, bond_target: 0.05,
   cash_min: 0.05, cash_max: 0.15, other: 'hold',
-  sentiment_mode: 'defensive_when_hot', single_name_max: 0.10, employer_max: 0.05
+  sentiment_mode: 'defensive_when_hot', single_name_max: 0.10
 };
 
 function targetPolicy_() {
@@ -315,17 +315,11 @@ function advicePayload_() {
   function add(level, title, body, tag) { items.push({ level: level, title: title, body: body, tag: tag || '' }); }
   function pct(x) { return (x * 100).toFixed(1) + '%'; }
 
-  // Employer concentration
-  var emp = holdings.filter(function (h) { return String(h.symbol) === PF_EMPLOYER_SYMBOL; })
-    .reduce(function (s, h) { return s + (Number(h.market_value_twd) || 0); }, 0);
   var pol = market.policy || PF_DEFAULT_POLICY;
-  if (emp > 0) {
-    var w = emp / total;
-    var pre = pegatronPreEarnings_();
-    add(w > pol.employer_max ? 'warn' : 'info', '雇主持股集中風險（和碩 4938）',
-      '和碩部位約 ' + pct(w) + '（約 NT$' + Math.round(emp).toLocaleString() + '）。薪資收入與持股來自同一家公司，風險會疊加；可考慮不再增加此部位，並把比例控制在 ' + pct(pol.employer_max) + ' 以下。' +
-      (pre ? ' 目前接近財報公布前的期間，這段時間建議不要對 4938 做任何買賣。' : ' 任何 4938 交易請遵守公司內部人規範，並避開財報公布前的期間。'), 'employer');
-  }
+  // 4938 compliance note only (no ratio limit): avoid suggesting 4938 trades in pre-earnings windows.
+  var holdsEmp = holdings.some(function (h) { return String(h.symbol) === PF_EMPLOYER_SYMBOL; });
+  if (holdsEmp && pegatronPreEarnings_())
+    add('info', '和碩 4938：接近財報公布前', '目前接近和碩財報公布前的期間。這段時間不提供任何 4938 的交易建議，任何交易也請遵守公司內部人規範。', 'compliance');
   // Single-name concentration
   var byAsset = {};
   holdings.forEach(function (h) {
@@ -333,9 +327,8 @@ function advicePayload_() {
     var k = h.symbol; byAsset[k] = byAsset[k] || { name: h.name, v: 0 }; byAsset[k].v += Number(h.market_value_twd) || 0;
   });
   Object.keys(byAsset).forEach(function (k) {
-    if (k === PF_EMPLOYER_SYMBOL) return;
     var w = byAsset[k].v / total;
-    if (w > pol.single_name_max) add('warn', '個股集中：' + byAsset[k].name + '（' + k + '）', '單一個股約 ' + pct(w) + '，高於 ' + pct(pol.single_name_max) + ' 的上限，可考慮分批降低。', 'concentration');
+    if (w > pol.single_name_max) add('warn', '個股集中：' + byAsset[k].name + '（' + k + '）', '單一個股約 ' + pct(w) + '，高於 ' + pct(pol.single_name_max) + ' 的上限，可考慮分批降低。' + (k === PF_EMPLOYER_SYMBOL && pegatronPreEarnings_() ? '（目前接近財報公布前，這段時間不建議調整 4938）' : ''), 'concentration');
   });
   // Drift vs target
   (alloc.rows || []).forEach(function (r) {
