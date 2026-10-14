@@ -1,5 +1,6 @@
 import { h } from '../dom.js';
 import { ALERT_LABELS, alertLevel } from '../p1.js';
+import { closeBasisLabel } from '../research.js';
 
 const DISCLAIMER = '依持股卡規則與公開價格自動比對；僅為檢討提醒，不是操作單。';
 
@@ -19,6 +20,7 @@ export function alertsBlock(result) {
           h('span', { class: `tag alert-tag alert-${level}` }, ALERT_LABELS[level])),
         alert.action ? h('p', {}, alert.action) : null,
         alert.reason ? h('p', { class: 'muted' }, alert.reason) : null,
-        alert.detail ? h('p', { class: 'hint' }, alert.detail) : null);
+        alert.detail ? h('p', { class: 'hint' }, alert.detail) : null,
+        closeBasisLabel(alert) ? h('p', { class: 'hint close-basis' }, closeBasisLabel(alert)) : null);
     }));
 }
