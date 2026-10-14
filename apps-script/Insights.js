@@ -154,7 +154,10 @@ function levels_(rows) {
 // ---------- market sentiment ----------
 function marketPayload_() {
   var cache = CacheService.getScriptCache();
-  try { var hit = cache.get('pf:market'); if (hit) return JSON.parse(hit); } catch (e) {}
+  try {
+    var hit = cache.get('pf:market');
+    if (hit) { var m = JSON.parse(hit); m.policy = targetPolicy_(); m.target = dynamicTarget_(m.policy, m.sentiment, 0); return m; }
+  } catch (e) {}
   var s = yahooSeriesMany_(['^VIX', '^TWII', '^GSPC'], '1y');
   var out = { ok: true, at: nowIso_(), indicators: {} };
   var scores = [];
@@ -188,9 +191,9 @@ function marketPayload_() {
     label: heat >= 0.75 ? '過熱' : heat >= 0.55 ? '偏樂觀' : heat >= 0.35 ? '中性' : heat >= 0.15 ? '偏悲觀' : '恐慌',
     inputs: scores.length
   };
+  try { cache.put('pf:market', JSON.stringify(out), 3600); } catch (e) {}
   out.policy = targetPolicy_();
   out.target = dynamicTarget_(out.policy, out.sentiment, 0);
-  try { cache.put('pf:market', JSON.stringify(out), 3600); } catch (e) {}
   return out;
 }
 
@@ -333,6 +336,7 @@ function advicePayload_() {
   var bal = enrichBalances_(balancesPayload_());
   var holdings = computeHoldings_();
   var market = marketPayload_();
+  market.policy = targetPolicy_();
   var total = alloc.total_twd || 1;
   var items = [];
   function add(level, title, body, tag) { items.push({ level: level, title: title, body: body, tag: tag || '' }); }
@@ -367,7 +371,7 @@ function advicePayload_() {
   });
   // Cash buffer
   var cashW = (alloc.rows || []).filter(function (r) { return r.bucket === 'cash'; })[0];
-  if (cashW && cashW.actual_weight < pol.cash_min) add('warn', '現金緩衝不足', '現金只佔 ' + pct(cashW.actual_weight) + '，低於 ' + pct(pol.cash_min) + ' 的下限。', 'cash');
+  if (!(pol.dca_pause && String(pol.dca_pause.enabled).toUpperCase() === 'TRUE') && cashW && cashW.actual_weight < pol.cash_min) add('warn', '現金緩衝不足', '現金只佔 ' + pct(cashW.actual_weight) + '，低於 ' + pct(pol.cash_min) + ' 的下限。', 'cash');
   // DCA cash brake (off by default; parameters in target_policy.dca_pause)
   var brake = cashBrake_(pol, bal, cashW);
   if (brake.enabled && brake.triggered) add('warn', '暫停定額（現金煞車）', brake.reason, 'dca_pause');
@@ -391,7 +395,10 @@ function advicePayload_() {
   // Sentiment
   if (market.sentiment) {
     var vix = market.indicators.vix ? market.indicators.vix.value.toFixed(1) : '—';
-    add('info', '市場情緒：' + market.sentiment.label, 'VIX ' + vix + '，綜合熱度 ' + Math.round(market.sentiment.heat * 100) + '/100。股票目標依此調為 ' + pct(market.target.stock) + '，現金 ' + pct(market.target.cash) + '。', 'sentiment');
+    var off = pol.sentiment_mode === 'off';
+    add('info', '市場情緒：' + market.sentiment.label, 'VIX ' + vix + '，綜合熱度 ' + Math.round(market.sentiment.heat * 100) + '/100。' +
+      (off ? '情緒調整已關閉，目標配置固定（股票 ' + pct(alloc.target.stock || 0) + '、現金 ' + pct(alloc.target.cash || 0) + '），此項僅供參考。'
+           : '股票目標依此調為 ' + pct(market.target.stock) + '，現金 ' + pct(market.target.cash) + '。'), 'sentiment');
   }
   var order = { warn: 0, info: 1 };
   items.sort(function (a, b) { return order[a.level] - order[b.level]; });
