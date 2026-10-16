@@ -142,11 +142,15 @@ test('stale quotes keep the price date and limit', () => {
     { asset_id: 'b', symbol: 'SI-145', name: '基金', account_id: 'x', market_value_twd: 10, cost_basis_twd: 8, unrealized_pl_twd: 2 },
   ], {
     a: { last: 10, is_stale: false, change_pct: 0 },
-    b: { last: 9, is_stale: true, price_date: '2026-08-01', stale_limit_days: 14, change_pct: -0.01 },
+    b: { last: 9, is_stale: true, price_date: '2026-08-01', price_basis: 'nav', estimate: true, stale_limit_days: 14, change_pct: -0.01 },
   });
   assert.equal(fresh.is_stale, false);
+  assert.equal(fresh.price_basis, '');
+  assert.equal(fresh.estimate, false);
   assert.equal(stale.is_stale, true);
   assert.equal(stale.price_date, '2026-08-01');
+  assert.equal(stale.price_basis, 'nav');
+  assert.equal(stale.estimate, true);
   assert.equal(stale.stale_limit_days, 14);
   const lines = policyLines({
     sentiment_mode: 'off',

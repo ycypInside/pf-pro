@@ -1,5 +1,7 @@
 /** Account groups, holdings join, and the open/closed state stored on this browser. */
 
+import { isEstimate } from './valuation.js';
+
 const GROUP_KEY = 'pfpro.accountGroups';
 
 const CLASS_LABEL = {
@@ -210,7 +212,9 @@ export function joinHoldings(holdings, quotes) {
       spark: Array.isArray(quote.spark) ? quote.spark.slice(-30) : [],
       source: quote.source || '',
       is_stale: quote.is_stale === true || quote.is_stale === 'true' || quote.is_stale === 'TRUE',
-      price_date: quote.price_date || '',
+      price_date: quote.price_date || row.price_date || '',
+      price_basis: quote.price_basis || row.price_basis || '',
+      estimate: isEstimate(quote.estimate) || isEstimate(row.estimate),
       stale_limit_days: finite(quote.stale_limit_days),
       cost,
       value,

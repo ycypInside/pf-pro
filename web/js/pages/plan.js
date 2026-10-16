@@ -16,6 +16,7 @@ import {
   wanLabel,
   yiTrack,
 } from '../p1.js';
+import { valuationFacts, valuationNote } from '../valuation.js';
 import { createPoster, outcomeView } from '../submit.js';
 
 const COLORS = ['#1d6b4f', '#1f2a5c', '#8a5a12'];
@@ -28,7 +29,7 @@ export async function renderPlan(main, ctx) {
     return;
   }
   const month = taipeiMonth();
-  const names = ['plan', 'dca'];
+  const names = ['plan', 'dca', 'quotes'];
   const stored = readCache(cacheKey('bundle', names, month));
   if (stored) paint(partsFromEnvelope(stored.body, names), staleView(stored.savedAt));
   else main.append(h('p', { class: 'muted' }, '讀取中…'));
@@ -39,6 +40,7 @@ export async function renderPlan(main, ctx) {
   function paint(parts, meta) {
   const planR = parts.plan;
   const dcaR = parts.dca;
+  const quotesR = parts.quotes;
   main.replaceChildren();
   if (denied(planR) || denied(dcaR)) {
     main.append(
@@ -48,7 +50,7 @@ export async function renderPlan(main, ctx) {
       h('button', { type: 'button', class: 'btn', onClick: () => ctx.go('settings') }, '前往設定'));
     return;
   }
-  mount(main, freshnessNote(meta), planSection(planR), dcaSection(dcaR));
+  mount(main, freshnessNote(meta), planSection(planR, quotesR), dcaSection(dcaR));
   }
 }
 
@@ -56,7 +58,7 @@ function denied(result) {
   return !!(result && !result.ok && result.error && result.error.payload && result.error.payload.error === 'unauthorized');
 }
 
-function planSection(result) {
+function planSection(result, quotesR) {
   if (!result.ok) {
     return h('section', { class: 'card' },
       h('h2', {}, '淨值計畫'),
@@ -76,6 +78,10 @@ function planSection(result) {
   return h('section', { class: 'card' },
     h('h2', {}, '淨值計畫'),
     pathNote(pathProgress(data)),
+    valuationNote(valuationFacts({
+      quotes: quotesR && quotesR.ok ? quotesR.data.quotes : null,
+      books: [data, quotesR && quotesR.ok ? quotesR.data : null],
+    })),
     yiNote(yiTrack(tracks)),
     data.note ? h('p', { class: 'hint' }, data.note) : null,
     series.length
