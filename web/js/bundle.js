@@ -59,6 +59,15 @@ export async function fillFailed(get, names, envelope, extras = {}) {
   return parts;
 }
 
+function carryFx(target, source) {
+  const next = { ...(target || {}) };
+  if (!source || typeof source !== 'object') return next;
+  for (const key of ['fx_rate', 'fx_as_of', 'fx_source']) {
+    if ((next[key] == null || next[key] === '') && source[key] != null && source[key] !== '') next[key] = source[key];
+  }
+  return next;
+}
+
 export function assembleOverview(parts) {
   const summary = parts.summary;
   const balances = parts.balances;
@@ -75,7 +84,7 @@ export function assembleOverview(parts) {
       : { balances: data.balances || [], net_worth: data.net_worth, institutions: [] };
     return {
       accountsR: { ok: true, data: { accounts: data.accounts || [] } },
-      balancesR: { ok: true, data: balanceData },
+      balancesR: { ok: true, data: carryFx(balanceData, data) },
       incomeR: { ok: true, data: { report: data.report } },
       checksR: { ok: true, data: { warnings: data.warnings || [] } },
       pricesR: { ok: true, data: { quotes: data.quotes || [], last_valuations: data.last_valuations || [], stale: data.stale || [] } },

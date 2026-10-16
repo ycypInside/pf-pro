@@ -5,6 +5,7 @@ import { formatPct, formatRate, formatTwd } from '../format.js';
 import { kindLabel } from '../labels.js';
 import { explainError, netWorth, splitCategories, taipeiMonth, withTwd } from '../money.js';
 import { dayChange, decisionView, pathProgress, wanLabel } from '../p1.js';
+import { valuationFacts, valuationNote } from '../valuation.js';
 import { entryQuery, readTemplates } from '../prefs.js';
 import { renderAccountGroups } from './accounts.js';
 import { adviceCard } from './advice.js';
@@ -66,6 +67,11 @@ export async function renderDashboard(main, ctx) {
         h('button', { type: 'button', class: 'text-btn', onClick: () => ctx.reload() }, '重新整理')),
       h('p', { class: 'net num' }, formatTwd(summary.net_worth_twd)),
       changeLine(change),
+      valuationNote(valuationFacts({
+        quotes: quoteBook,
+        holdings,
+        books: [balancesR.ok ? balancesR.data : null, planData, quotesR.ok ? quotesR.data : null],
+      }), 'valuation hero-valuation'),
       pathBar(path),
       h('dl', { class: 'split' },
         stat('資產', formatTwd(summary.total_assets_twd)),
@@ -123,7 +129,7 @@ function changeLine(change) {
   const pct = Number.isFinite(change.pct) ? formatPct(change.pct) : '—';
   const tone = !Number.isFinite(change.twd) ? '' : change.twd < 0 ? 'down' : change.twd > 0 ? 'up' : '';
   const span = change.prevDate && change.date ? ` ${change.prevDate} → ${change.date}` : '';
-  return h('p', { class: `day-change ${tone}` }, `較前一日 ${twd}（${pct}）${span}`);
+  return h('p', { class: `day-change ${tone}` }, `總淨值較前一日 ${twd}（${pct}）${span}`);
 }
 
 function pathBar(path) {

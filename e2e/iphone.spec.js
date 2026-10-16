@@ -33,8 +33,11 @@ const summary = {
     expense_twd: 45678.55,
     by_category: { 薪資: 180000, 餐飲外食: -45678.55 },
   },
-  warnings: [],
-  quotes: [],
+    warnings: [],
+    fx_rate: 32.15,
+    fx_as_of: '2026-10-14T01:30:00Z',
+    fx_source: 'BOT',
+    quotes: [],
   stale: [],
   last_valuations: [],
   holdings: [
@@ -106,6 +109,9 @@ const gets = {
   },
   balances: {
     ok: true,
+    fx_rate: 32.15,
+    fx_as_of: '2026-10-14T01:30:00Z',
+    fx_source: 'BOT',
     net_worth: summary.net_worth,
     institutions: [{
       institution: '玉山銀行',
@@ -155,12 +161,46 @@ const gets = {
         currency: 'TWD',
         last_price: 100,
       },
+      {
+        asset_id: '2454',
+        name: '聯發科',
+        symbol: '2454',
+        account_id: 'cash',
+        asset_class: 'stock',
+        quantity: 5,
+        market_value_twd: 5000,
+        cost_basis_twd: 4800,
+        unrealized_pl_twd: 200,
+        currency: 'TWD',
+        last_price: 1000,
+      },
+      {
+        asset_id: 'bond',
+        name: '公司債',
+        symbol: 'BOND',
+        account_id: 'cash',
+        asset_class: 'bond',
+        quantity: 1,
+        market_value_twd: 900,
+        cost_basis_twd: 1000,
+        unrealized_pl_twd: -100,
+        currency: 'TWD',
+        last_price: 90,
+      },
     ],
   },
   quotes: {
     ok: true,
     quotes: {
-      '0050': { last: 180.25, change_pct: -0.012, spark: [170, 172, 175, 180.25], source: 'stored' },
+      '0050': {
+        last: 180.25,
+        change_pct: -0.012,
+        spark: [170, 172, 175, 180.25],
+        source: 'stored',
+        price_date: '2026-10-14',
+        price_basis: 'close',
+        estimate: false,
+      },
       4938: {
         last: 100,
         change_pct: 0.01,
@@ -168,7 +208,25 @@ const gets = {
         source: 'yahoo',
         is_stale: true,
         price_date: '2026-08-01',
+        price_basis: 'nav',
+        estimate: true,
         stale_limit_days: 7,
+      },
+      2454: {
+        last: 1000,
+        change_pct: 0.004,
+        spark: [980, 1000],
+        price_date: '2026-10-14',
+        price_basis: 'intraday',
+        estimate: false,
+      },
+      bond: {
+        last: 90,
+        change_pct: -0.002,
+        spark: [92, 90],
+        price_date: '2026-09-01',
+        price_basis: 'manual_pending',
+        estimate: false,
       },
     },
   },
@@ -230,6 +288,9 @@ const gets = {
     ok: true,
     as_of: '2026-10-14',
     net_worth_twd: 98765432.1,
+    fx_rate: 32.15,
+    fx_as_of: '2026-10-14T01:30:00Z',
+    fx_source: 'BOT',
     path_d: {
       start_twd: 14020000,
       start_date: '2026-09-16',
@@ -660,7 +721,10 @@ test('總覽 shows net worth and quick entry', async ({ page }) => {
   await expect(page.locator('.decision-stale_quote')).toContainText('和碩 報價過期');
   await expect(page.getByText('今天無事')).toHaveCount(0);
   await expect(page.locator('section', { has: page.getByRole('heading', { name: '待您決定' }) })).toContainText('不是操作單');
-  await expect(page.getByText('較前一日 −NT$12,345.60（−0.01%） 2026-10-13 → 2026-10-14')).toBeVisible();
+  await expect(page.getByText('總淨值較前一日 −NT$12,345.60（−0.01%） 2026-10-13 → 2026-10-14')).toBeVisible();
+  await expect(page.getByText('價格 2026-08-01–2026-10-14').first()).toBeVisible();
+  await expect(page.getByText('匯率 32.15 · 2026-10-14 09:30 · BOT').first()).toBeVisible();
+  await expect(page.getByText('有淨值或匯率超過 2 天').first()).toBeVisible();
   await expect(page.getByText('路徑 D 1,402萬 → 第一年 1,654萬')).toBeVisible();
   await expect(page.getByText('完成 39%')).toBeVisible();
   await expect(page.getByRole('heading', { name: '檢討提醒' })).toBeVisible();
@@ -674,6 +738,14 @@ test('總覽 shows net worth and quick entry', async ({ page }) => {
   await expect(page.getByText('現金緩衝')).toBeVisible();
   await expect(page.locator('.banner.err', { hasText: '價格過期' })).toBeVisible();
   await expect(page.locator('.banner.err', { hasText: '暫停定額' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /和碩/ }).getByText('估', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /聯發科/ }).getByText('盤中', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /聯發科/ }).getByText('價格 2026-10-14')).toBeVisible();
+  await expect(page.getByRole('button', { name: /公司債/ }).getByText('待手動', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /公司債/ }).getByText('最後淨值 2026-09-01')).toBeVisible();
+  await expect(page.getByRole('button', { name: /公司債/ }).locator('.estimate').first()).toBeVisible();
+  await expect(page.getByRole('button', { name: /元大台灣50/ }).getByText('盤中')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /元大台灣50/ }).getByText('待手動')).toHaveCount(0);
   await expect(page.getByRole('button', { name: /和碩/ }).getByText('過期', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /和碩/ }).getByText('價格 2026-08-01 · 上限 7 天')).toBeVisible();
   await expect(page.getByRole('button', { name: /元大台灣50/ }).getByText('過期', { exact: true })).toHaveCount(0);
@@ -682,7 +754,7 @@ test('總覽 shows net worth and quick entry', async ({ page }) => {
   await expect(page.getByText('雇主持股')).toHaveCount(0);
   await expect(page.getByRole('button', { name: /和碩/ })).toBeVisible();
   await expect(page.getByText('玉山集團')).toHaveCount(0);
-  await page.getByRole('button', { name: /玉山銀行/ }).click();
+  await page.getByRole('button', { name: /^▸ 玉山銀行/ }).click();
   await expect(page.getByRole('article').getByText('玉山銀行台幣活存')).toBeVisible();
   await page.getByRole('button', { name: /元大台灣50/ }).click();
   const sheet = page.getByRole('dialog');
@@ -768,6 +840,9 @@ test('計畫 shows both tracks, gaps, and the DCA card', async ({ page }) => {
   await page.goto('/#/plan');
   await expect(page.getByRole('img', { name: '計畫與實際淨值' })).toBeVisible();
   await expect(page.getByText(/路徑 D 自 1,402萬/)).toBeVisible();
+  await expect(page.getByText('價格 2026-08-01–2026-10-14')).toBeVisible();
+  await expect(page.getByText('匯率 32.15 · 2026-10-14 09:30 · BOT')).toBeVisible();
+  await expect(page.getByText('有淨值或匯率超過 2 天')).toBeVisible();
   await expect(page.getByText(/上億差距/)).toBeVisible();
   await expect(page.getByText('本月定額：已扣款 1、待扣款 2、煞車暫停 1')).toBeVisible();
   await expect(page.locator('.acct-name', { hasText: '主計畫' })).toBeVisible();
@@ -865,7 +940,7 @@ test('待您決定 shows 今天無事 when the count is zero', async ({ page }) 
     await page.goto('/#/overview');
     await expect(page.getByText('今天無事')).toBeVisible();
     await expect(page.getByText('不是操作單').first()).toBeVisible();
-    await expect(page.getByText('較前一日 —（—）')).toBeVisible();
+    await expect(page.getByText('總淨值較前一日 —（—）')).toBeVisible();
   } finally {
     gets.decisions = saved;
   }

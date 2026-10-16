@@ -3,6 +3,7 @@ import { chartQuery } from '../bundle.js';
 import { h, mount } from '../dom.js';
 import { formatMoney, formatPct, formatQty, formatTwd } from '../format.js';
 import { groupHoldings, joinHoldings, quoteTone, sortHoldings } from '../groups.js';
+import { quoteMarks } from '../valuation.js';
 import { formatLevel, levelLadder } from '../levels.js';
 import { cardsForAsset, rulePriceLines, ruleTypeLabel } from '../p1.js';
 import { paintChart, rangeMarker } from '../price-chart.js';
@@ -10,6 +11,7 @@ import { paintChart, rangeMarker } from '../price-chart.js';
 const SORTS = [['value', '市值'], ['change', '漲跌'], ['pl', '損益'], ['name', '名稱']];
 let sortKey = 'value';
 let groupMode = 'account';
+const closedGroups = new Set();
 
 export function renderHoldings(holdings, quotes, names) {
   const root = h('div', {});
@@ -29,10 +31,28 @@ export function renderHoldings(holdings, quotes, names) {
         groupButton('account', '依帳戶'),
         groupButton('class', '依類型')),
       groups.length
-        ? h('div', {}, groups.map((group) => h('section', {},
-          h('h3', {}, group.label),
-          ...group.rows.map(quoteRow))))
+        ? h('div', {}, groups.map(groupBlock))
         : h('p', { class: 'muted' }, '還沒有持倉。'));
+  }
+
+  function groupBlock(group) {
+    const open = !closedGroups.has(group.id);
+    const total = group.rows.reduce((sum, row) => sum + (Number(row.value) || 0), 0);
+    return h('section', {},
+      h('button', {
+        type: 'button',
+        class: 'group-head',
+        'aria-expanded': open ? 'true' : 'false',
+        onClick: () => {
+          if (open) closedGroups.add(group.id);
+          else closedGroups.delete(group.id);
+          draw();
+        },
+      },
+      h('span', {}, `${open ? '▾' : '▸'} ${group.label}`),
+      h('span', { class: 'num' }, formatTwd(total)),
+      h('span', { class: 'muted group-sub' }, `${group.rows.length} 檔`)),
+      open ? h('div', { class: 'group-body' }, group.rows.map(quoteRow)) : null);
   }
 
   function groupButton(mode, label) {
@@ -51,7 +71,9 @@ function quoted(text, stale) {
 function quoteRow(row) {
   const tone = quoteTone(row.change_pct);
   const stale = row.is_stale;
-  const toneClass = stale ? 'estimate num' : tone === 'up' ? 'tw-up num' : tone === 'down' ? 'tw-down num' : 'muted num';
+  const marks = quoteMarks(row);
+  const grey = stale || marks.pending;
+  const toneClass = grey ? 'estimate num' : tone === 'up' ? 'tw-up num' : tone === 'down' ? 'tw-down num' : 'muted num';
   return h('button', {
     type: 'button',
     class: 'quote-row',
@@ -60,15 +82,18 @@ function quoteRow(row) {
   h('span', { class: 'quote-top' },
     h('span', { class: 'quote-name' },
       h('strong', {}, row.name),
-      stale ? h('span', { class: 'tag stale' }, '過期') : null),
+      stale ? h('span', { class: 'tag stale' }, '過期') : null,
+      marks.badges.map((badge) => h('span', { class: `tag mini basis-${badge.id}` }, badge.label))),
     h('span', { class: toneClass }, quoted(formatPct(row.change_pct), stale))),
   h('span', { class: 'quote-sub' },
-    h('span', { class: stale ? 'estimate' : 'muted' }, `${row.symbol} · ${quoted(formatMoney(row.price, row.currency), stale)}`),
+    h('span', { class: grey ? 'estimate' : 'muted' }, `${row.symbol} · ${quoted(formatMoney(row.price, row.currency), stale)}`),
     sparkline(row.spark, stale ? 'flat' : tone)),
+  marks.pending ? h('span', { class: 'estimate quote-stale' }, `最後淨值 ${marks.date || '—'}`) : null,
+  !marks.pending && !stale && marks.date ? h('span', { class: 'muted quote-stale' }, `價格 ${marks.date}`) : null,
   stale ? h('span', { class: 'muted quote-stale' }, `價格 ${row.price_date || '—'} · 上限 ${row.stale_limit_days == null ? '—' : row.stale_limit_days} 天`) : null,
   h('span', { class: 'quote-metrics' },
     metric('成本', formatTwd(row.cost)),
-    metric('市值', quoted(formatTwd(row.value), stale), stale ? 'stale' : ''),
+    metric('市值', quoted(formatTwd(row.value), stale), grey ? 'stale' : ''),
     metric('損益', quoted(formatPct(row.pl_pct), stale), stale ? 'stale' : tone),
     metric('比重', formatPct(row.weight).replace('+', ''))));
 }

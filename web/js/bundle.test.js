@@ -71,11 +71,14 @@ test('overview parts map onto the old tryGet shapes', () => {
       quotes: [{ symbol: '0050' }],
       warnings: ['檢查'],
       net_worth: { net_worth_twd: 5 },
+      fx_as_of: '2026-10-14T01:30:00Z',
+      fx_source: 'BOT',
+      fx_rate: 30,
       holdings: [{ asset_id: 'h' }],
       last_valuations: [],
       stale: [],
     }) },
-    balances: { ok: true, data: part({ balances: [{ account_id: 'cash' }], net_worth: { net_worth_twd: 9 } }) },
+    balances: { ok: true, data: part({ balances: [{ account_id: 'cash' }], net_worth: { net_worth_twd: 9 }, fx_rate: 32.15 }) },
     quotes: { ok: true, data: part({ quotes: { '0050': { last: 1 } } }) },
     advice: { ok: false, error: Object.assign(new Error('nope'), { payload: { ok: false, error: 'nope' } }) },
     holdings: { ok: true, data: part({ holdings: [] }) },
@@ -85,6 +88,9 @@ test('overview parts map onto the old tryGet shapes', () => {
   });
   assert.equal(view.accountsR.data.accounts[0].account_id, 'cash');
   assert.equal(view.balancesR.data.net_worth.net_worth_twd, 9);
+  assert.equal(view.balancesR.data.fx_rate, 32.15);
+  assert.equal(view.balancesR.data.fx_as_of, '2026-10-14T01:30:00Z');
+  assert.equal(view.balancesR.data.fx_source, 'BOT');
   assert.deepEqual(view.incomeR.data.report.by_category, []);
   assert.equal(view.checksR.data.warnings[0], '檢查');
   assert.equal(view.pricesR.data.quotes[0].symbol, '0050');

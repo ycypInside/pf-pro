@@ -451,6 +451,13 @@ dialog.sheet::backdrop { background: rgba(22, 32, 28, 0.45); }
 .quote-top, .quote-sub { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-width: 0; }
 .quote-name { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
 .tag.stale { background: var(--err); color: var(--red); flex: 0 0 auto; }
+.tag.mini { min-height: 18px; padding: 0 6px; font-size: 11px; }
+.tag.basis-intraday { background: #e7eaf4; color: #1f2a5c; }
+.tag.basis-estimate { background: #efe6d6; color: var(--muted); }
+.tag.basis-manual { background: var(--dup); color: var(--amber); }
+.valuation-line { margin: 0 0 4px; font-size: 12px; line-height: 1.4; }
+.hero .valuation-line { color: rgba(246, 241, 230, 0.84); }
+.hero .valuation-line.estimate { color: #f6e7c3; }
 .quote-stale { font-size: 12px; overflow-wrap: anywhere; }
 .quote-top strong, .quote-sub span { min-width: 0; overflow-wrap: anywhere; }
 .quote-metrics {
