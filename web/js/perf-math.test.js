@@ -13,7 +13,7 @@ runInContext(readFileSync(path.join(root, 'apps-script/PerfMath.js'), 'utf8'), c
 const {
   pfReplay, pfUnrealized, pfPeriodPnl, pfModifiedDietz, pfLinkedTwr, pfXirr, pfXirrSchedule,
   pfAllocation, pfNormalizeTarget, pfBucket, pfPortfolioFlows, pfAccountFlows, pfClassifyCashflow,
-  pfPeriodRange, pfBenchmarkReturn, pfIncome,
+  pfCashflowScope, pfBuildCashflows, pfPeriodRange, pfBenchmarkReturn, pfIncome,
 } = context;
 
 function close(actual, expected, eps = 1e-9) {
@@ -176,6 +176,42 @@ test('external principal is kept out of income, and internal transfers stay insi
   assert.equal(pfClassifyCashflow(txns[4], true), 'internal_transfer');
   assert.equal(pfClassifyCashflow(txns[6], true), '');
   assert.equal(pfClassifyCashflow({ txn_type: 'expense', flow_class: 'external', amount: -80, status: 'active' }, false), '');
+});
+
+test('cashflow rebuild scopes stay inside portfolio or account', () => {
+  const allowed = new Set(['portfolio', 'account']);
+  assert.equal(pfCashflowScope('', true), '');
+  assert.equal(pfCashflowScope('internal_transfer', true), 'account');
+  assert.equal(pfCashflowScope('internal_transfer', false), 'account');
+  assert.equal(pfCashflowScope('external_contribution', true), 'portfolio');
+  assert.equal(pfCashflowScope('external_withdrawal', true), 'portfolio');
+  assert.equal(pfCashflowScope('income_interest', false), 'account');
+  assert.equal(pfCashflowScope('fee', true), 'portfolio');
+
+  const investment = (txn) => txn.account_id !== 'CASH';
+  const rows = pfBuildCashflows([
+    { txn_id: 'TX-20261020-out', date: '2026-10-20', account_id: 'BRK', amount: -50000, amount_twd: -50000, currency: 'TWD', fx_rate: 1, flow_class: 'internal', txn_type: 'transfer_out', status: 'active', transfer_group_id: 'TG-20261020-77a3a5' },
+    { txn_id: 'TX-20261020-in', date: '2026-10-20', account_id: 'BRK2', amount: 50000, amount_twd: 50000, currency: 'TWD', fx_rate: 1, flow_class: 'internal', txn_type: 'transfer_in', status: 'active', transfer_group_id: 'TG-20261020-77a3a5' },
+    { txn_id: 'TX-fee', date: '2026-10-20', account_id: 'BRK', amount: -15, amount_twd: -15, currency: 'TWD', fx_rate: 1, flow_class: 'investment_cost', txn_type: 'fee', status: 'active' },
+    { txn_id: 'TX-ext', date: '2026-10-01', account_id: 'BRK', amount: 1000, amount_twd: 1000, currency: 'TWD', fx_rate: 1, flow_class: 'external', txn_type: 'transfer_in', status: 'active' },
+    { txn_id: 'TX-bank', date: '2026-10-02', account_id: 'CASH', amount: 20, amount_twd: 20, currency: 'TWD', fx_rate: 1, flow_class: 'external', txn_type: 'interest', status: 'active' },
+    { txn_id: 'TX-move', date: '2026-10-03', account_id: 'CASH', amount: -100, amount_twd: -100, currency: 'TWD', fx_rate: 1, flow_class: 'internal', txn_type: 'transfer_out', status: 'active' },
+    { txn_id: 'TX-void', date: '2026-10-04', account_id: 'BRK', amount: 10, amount_twd: 10, currency: 'TWD', fx_rate: 1, flow_class: 'external', txn_type: 'transfer_in', status: 'void' },
+    { txn_id: 'TX-trade', date: '2026-10-05', account_id: 'BRK', amount: -100, amount_twd: -100, currency: 'TWD', fx_rate: 1, flow_class: 'internal', txn_type: 'adjustment', trade_id: 'TR1', status: 'active' },
+    null,
+    {},
+  ], investment);
+
+  same(rows.map((row) => [row.source_txn_id, row.scope, row.cf_class, row.direction]), [
+    ['TX-20261020-out', 'account', 'internal_transfer', 'out'],
+    ['TX-20261020-in', 'account', 'internal_transfer', 'in'],
+    ['TX-fee', 'portfolio', 'fee', 'out'],
+    ['TX-ext', 'portfolio', 'external_contribution', 'in'],
+    ['TX-bank', 'account', 'income_interest', 'in'],
+  ]);
+  assert.equal(rows[0].cf_id, 'CF-20261020-out');
+  for (const row of rows) assert.equal(allowed.has(row.scope), true);
+  assert.equal(rows.some((row) => row.scope === 'investment' || row.scope === 'household'), false);
 });
 
 test('allocation flags a drift outside the band and maps funds onto stock', () => {
