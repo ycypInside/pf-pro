@@ -343,6 +343,44 @@ function pfClassifyCashflow(txn, isInvestment) {
   return '';
 }
 
+/** Cashflows.scope allows only these two values. */
+function pfCashflowScope(cls, isInvestment) {
+  if (!cls) return '';
+  if (cls === 'internal_transfer') return 'account';
+  return isInvestment ? 'portfolio' : 'account';
+}
+
+function pfBuildCashflows(txns, isInvestment) {
+  var rows = [];
+  (txns || []).forEach(function (t) {
+    if (!t || (t.status && t.status !== 'active')) return;
+    var inv = typeof isInvestment === 'function' ? !!isInvestment(t) : !!isInvestment;
+    var cls = pfClassifyCashflow({
+      status: t.status || 'active',
+      trade_id: t.trade_id || '',
+      txn_type: t.txn_type,
+      flow_class: t.flow_class,
+      amount: Number(t.amount)
+    }, inv);
+    if (!cls) return;
+    var amount = Number(t.amount);
+    rows.push({
+      cf_id: 'CF-' + String(t.txn_id || '').replace(/^TX-/, ''),
+      date: t.date,
+      scope: pfCashflowScope(cls, inv),
+      account_id: t.account_id,
+      direction: amount >= 0 ? 'in' : 'out',
+      amount_twd: Number(t.amount_twd),
+      amount: amount,
+      currency: t.currency,
+      fx_rate: Number(t.fx_rate) || 1,
+      cf_class: cls,
+      source_txn_id: t.txn_id
+    });
+  });
+  return rows;
+}
+
 function pfModifiedDietz(bmv, emv, flows, start, end, income) {
   var days = pfDaysBetween(start, end);
   var cf = 0;

@@ -151,29 +151,24 @@ function safeRebuildCashflows_() {
 
 function rebuildCashflows_() {
   var accounts = accountsById_();
-  var rows = [];
-  readTable_('Transactions').forEach(function (t) {
-    if (t.status !== 'active') return;
-    var acc = accounts[t.account_id];
-    var inv = !!(acc && String(acc.is_investment).toUpperCase() === 'TRUE');
-    var cls = pfClassifyCashflow({
-      status: t.status, trade_id: t.trade_id || '', txn_type: t.txn_type,
-      flow_class: t.flow_class, amount: num_(t.amount)
-    }, inv);
-    if (!cls) return;
-    rows.push({
-      cf_id: 'CF-' + String(t.txn_id || '').replace(/^TX-/, ''),
+  var txns = readTable_('Transactions').map(function (t) {
+    return {
+      txn_id: t.txn_id,
       date: fmtDate_(t.date),
-      scope: inv ? 'investment' : 'household',
       account_id: t.account_id,
-      direction: num_(t.amount) >= 0 ? 'in' : 'out',
-      amount_twd: num_(t.amount_twd),
+      status: t.status,
+      trade_id: t.trade_id || '',
+      txn_type: t.txn_type,
+      flow_class: t.flow_class,
       amount: num_(t.amount),
+      amount_twd: num_(t.amount_twd),
       currency: t.currency,
-      fx_rate: num_(t.fx_rate) || 1,
-      cf_class: cls,
-      source_txn_id: t.txn_id
-    });
+      fx_rate: num_(t.fx_rate) || 1
+    };
+  });
+  var rows = pfBuildCashflows(txns, function (t) {
+    var acc = accounts[t.account_id];
+    return !!(acc && String(acc.is_investment).toUpperCase() === 'TRUE');
   });
   replaceBody_('Cashflows', rows);
   return rows.length;
