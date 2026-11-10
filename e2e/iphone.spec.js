@@ -441,6 +441,49 @@ const gets = {
     },
     disclaimer: '待決事項僅為提醒，不是操作單。',
   },
+  finance_summary: {
+    ok: true,
+    at: '2026-10-14T01:30:00Z',
+    as_of: '2026-10-14',
+    net_worth: summary.net_worth,
+    allocation: {
+      total_twd: 98765432.1,
+      band_pct: 5,
+      target: { stock: 0.6, bond: 0.2, cash: 0.2 },
+      rows: [
+        { bucket: 'stock', label: '股票', actual_weight: 0.72, target_weight: 0.6, drift: 0.12 },
+        { bucket: 'bond', label: '債券', actual_weight: 0.05, target_weight: 0.2, drift: -0.15 },
+        { bucket: 'cash', label: '現金', actual_weight: 0.23, target_weight: 0.2, drift: 0.03 },
+      ],
+      estimated: [],
+    },
+    single_stocks: [
+      { symbol: '0050', name: '元大台灣50', value_twd: 40000000, weight: 0.05, over_limit: false, over_trim: false },
+      { symbol: '2317', name: '鴻海', value_twd: 12000000, weight: 0.16, over_limit: true, over_trim: false },
+      { symbol: '4938', name: '和碩', value_twd: 8000000, weight: 0.18, over_limit: true, over_trim: false },
+      { symbol: '2454', name: '聯發科', value_twd: 18000000, weight: 0.22, over_limit: true, over_trim: true },
+      { symbol: '2330', name: '台積電', value_twd: 999, weight: 0.5, over_limit: true, over_trim: true, mode: 'paper' },
+    ],
+    single_name_max: 0.15,
+    single_name_trim: 0.2,
+    pegatron_pre_earnings: true,
+    cash_brake: {
+      enabled: true,
+      triggered: true,
+      cash_pct_total: 0.06,
+      net_cash_pct_nw: 0.01,
+      net_cash_twd: 100000,
+      thresholds: { cash_pct_total: 0.08, net_cash_pct_nw: 0.02 },
+      reason: '現金佔總資產 6.0%，低於 8%',
+    },
+    dca: { exempt_enabled: true, core_assets: ['0050', 'VOO'] },
+    stale: [{ asset_id: '4938', symbol: '4938', name: '和碩', price_date: '2026-08-01', limit: 7 }],
+    advice: [
+      { level: 'warn', title: '暫停定額（現金煞車）', body: '現金偏低。', tag: 'dca_pause' },
+      { level: 'warn', title: '紙上減碼', body: '不要把它算進真實動作。', tag: 'concentration', mode: 'paper' },
+    ],
+    disclaimer: '自動產生，僅供參考，不構成投資建議。',
+  },
   paper: {
     ok: true,
     mode: 'paper',
@@ -708,6 +751,30 @@ test('設定 connects and stays inside the iPhone width', async ({ page }) => {
 
 test('總覽 shows net worth and quick entry', async ({ page }) => {
   await page.goto('/#/overview');
+  await expect(page.getByText('今天要不要動手？')).toBeVisible();
+  await expect(page.locator('.today-verdict')).toHaveText('暫停定額');
+  await expect(page.locator('.banner.stale')).toContainText('資料不是今天');
+  await expect(page.locator('.banner.stale')).toContainText('2026-10-14 09:30');
+  await expect(page.locator('.banner.stale')).toContainText('Asia/Taipei');
+  await expect(page.locator('.paper-note')).toContainText('紙上倉');
+  await expect(page.locator('.paper-note')).toContainText('台積電');
+  await expect(page.locator('.today').getByRole('button', { name: /買進|賣出|下單/ })).toHaveCount(0);
+  const fold = await page.evaluate(() => {
+    const lights = document.querySelector('.lights');
+    const box = lights.getBoundingClientRect();
+    return { bottom: box.bottom, width: window.innerWidth, height: window.innerHeight };
+  });
+  if (fold.width === 390) expect(fold.bottom).toBeLessThanOrEqual(fold.height);
+  await page.getByRole('button', { name: '個股' }).click();
+  await expect(page.locator('.light-panel')).toContainText('不加碼線 15.0%');
+  await expect(page.locator('.light-panel')).toContainText('減碼線 20.0%');
+  await expect(page.locator('.light-panel')).toContainText('暫停加碼');
+  await expect(page.locator('.light-panel')).toContainText('建議分批減碼');
+  await expect(page.locator('.light-panel')).toContainText('紙上倉 台積電');
+  await expect(page.locator('.light-panel')).toContainText('財報前不交易');
+  await page.locator('.today-reasons a').first().click();
+  await expect(page.locator('#sec-cash')).toBeInViewport();
+  await expect(page).toHaveURL(/#\/overview/);
   await expect(page.getByText('淨資產 · 台幣')).toBeVisible();
   await expect(page.getByText('NT$98,765,432.10')).toBeVisible();
   await expect(page.getByRole('button', { name: '記支出' })).toBeVisible();

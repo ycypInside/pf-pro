@@ -1,5 +1,7 @@
 import { hasConfig, loadConfig, tryGet } from '../api.js';
 import { cacheKey, fetchOverview, freshnessNote, readCache, staleView, viewFromOverview } from '../bundle.js';
+import { writeCache } from '../swr.js';
+import { buildToday } from '../today.js';
 import { h, mount } from '../dom.js';
 import { formatPct, formatRate, formatTwd } from '../format.js';
 import { kindLabel } from '../labels.js';
@@ -11,6 +13,7 @@ import { renderAccountGroups } from './accounts.js';
 import { adviceCard } from './advice.js';
 import { alertsBlock } from './alerts.js';
 import { renderHoldings } from './holdings.js';
+import { lightSummary, todayCard, todayExtraSections } from './today.js';
 
 export async function renderDashboard(main, ctx) {
   if (!hasConfig()) {
@@ -18,14 +21,22 @@ export async function renderDashboard(main, ctx) {
     return;
   }
   const month = taipeiMonth();
+  const token = loadConfig().token;
   const stored = readCache(cacheKey('overview', [], month));
-  if (stored) paint(viewFromOverview(stored.body), staleView(stored.savedAt));
+  const storedFinance = readCache(cacheKey('finance_summary', [], month));
+  if (stored) paint(viewFromOverview(stored.body), staleView(stored.savedAt), financeInput(storedFinance, null));
   else main.append(h('p', { class: 'muted' }, '讀取中…'));
-  const loaded = await fetchOverview(month, tryGet, { token: loadConfig().token });
+  const [loaded, financeR, settingsR] = await Promise.all([
+    fetchOverview(month, tryGet, { token }),
+    tryGet('finance_summary'),
+    tryGet('settings'),
+  ]);
   if (!ctx.alive()) return;
-  paint(loaded, null);
+  if (financeR.ok) writeCache(cacheKey('finance_summary', [], month), financeR.data, undefined, token);
+  const settings = settingsR.ok ? settingsR.data.settings : null;
+  paint(loaded, null, financeInput(financeR.ok ? { body: financeR.data, savedAt: Date.now() } : storedFinance, financeR, settings));
 
-  function paint(loadedView, meta) {
+  function paint(loadedView, meta, finance) {
   const { accountsR, balancesR, incomeR, checksR, pricesR, holdingsR, quotesR, adviceR, alertsR, planR, decisionsR } = loadedView;
   main.replaceChildren();
   const fatal = [accountsR, balancesR, incomeR, checksR].find((item) => !item.ok);
@@ -57,9 +68,20 @@ export async function renderDashboard(main, ctx) {
   const planData = planR && planR.ok ? planR.data : null;
   const change = dayChange(decisionData) || dayChange(planData);
   const path = pathProgress(planData);
+  const today = finance && finance.pending
+    ? { pending: true }
+    : buildToday(finance && finance.summary, {
+      now: new Date(),
+      settings: finance && finance.settings,
+      fetchFailed: !!(finance && finance.fetchFailed),
+      fromCache: !!(finance && finance.fromCache),
+      cacheStale: !!(finance && finance.cacheStale),
+      error: finance && finance.error,
+    });
 
   mount(main,
     freshnessNote(meta),
+    todayCard(today),
     section('待您決定', decisionsBody(decisions)),
     h('section', { class: 'hero' },
       h('div', { class: 'hero-top' },
@@ -90,10 +112,41 @@ export async function renderDashboard(main, ctx) {
       ? renderAccountGroups(balancesR.data.balances || rawBalances, accounts, balancesR.data.institutions || [], localStorage)
       : renderAccountGroups(rawBalances, accounts, [], localStorage)),
     section(`${month.label}收支`, incomeR.ok ? incomeBlock(report, categories) : failNote(incomeR)),
-    section('持倉', renderHoldings(holdingsR.ok ? (holdingsR.data.holdings || holdings) : holdings, quoteBook, names)),
-    section('報價與最後估值日', pricesR.ok ? priceBlock(pricesR.data) : failNote(pricesR, '報價')),
-    section('資料檢查', checksR.ok ? checkBlock(checksR.data.warnings || []) : failNote(checksR)));
+    section('持倉', [
+      lightSummary(today, 'single'),
+      renderHoldings(holdingsR.ok ? (holdingsR.data.holdings || holdings) : holdings, quoteBook, names),
+    ], 'sec-holdings'),
+    section('報價與最後估值日', pricesR.ok ? priceBlock(pricesR.data) : failNote(pricesR, '報價'), 'sec-quotes'),
+    section('資料檢查', checksR.ok ? checkBlock(checksR.data.warnings || []) : failNote(checksR)),
+    todayExtraSections(today));
   }
+}
+
+function financeInput(cached, result, settings) {
+  if (!result && !cached) return { pending: true };
+  if (result && result.ok) {
+    return { summary: result.data, fromCache: false, fetchFailed: false, cacheStale: false, settings: settings || null };
+  }
+  if (cached && cached.body) {
+    const view = staleView(cached.savedAt);
+    return {
+      summary: cached.body,
+      fromCache: true,
+      fetchFailed: !!(result && !result.ok),
+      cacheStale: view.stale,
+      error: result && result.error,
+      settings: settings || null,
+    };
+  }
+  if (!result) return { pending: true };
+  return {
+    summary: null,
+    fromCache: false,
+    fetchFailed: true,
+    cacheStale: false,
+    error: result.error,
+    settings: settings || null,
+  };
 }
 
 function templateChips(templates, names, ctx) {
@@ -153,8 +206,10 @@ function stat(label, value) {
   return h('div', {}, h('dt', {}, label), h('dd', { class: 'num' }, value));
 }
 
-function section(title, body) {
-  return h('section', { class: 'card' }, h('h2', {}, title), body);
+function section(title, body, id) {
+  const props = { class: 'card' };
+  if (id) props.id = id;
+  return h('section', props, h('h2', {}, title), body);
 }
 
 function failNote(result, label = '這一段') {
