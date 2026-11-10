@@ -458,11 +458,14 @@ const gets = {
       estimated: [],
     },
     single_stocks: [
-      { symbol: '0050', name: '元大台灣50', value_twd: 50000000, weight: 0.05, over_limit: false },
-      { symbol: '4938', name: '和碩', value_twd: 8000000, weight: 0.12, over_limit: true },
-      { symbol: '2330', name: '台積電', value_twd: 999, weight: 0.5, over_limit: true, mode: 'paper' },
+      { symbol: '0050', name: '元大台灣50', value_twd: 40000000, weight: 0.05, over_limit: false, over_trim: false },
+      { symbol: '2317', name: '鴻海', value_twd: 12000000, weight: 0.16, over_limit: true, over_trim: false },
+      { symbol: '4938', name: '和碩', value_twd: 8000000, weight: 0.18, over_limit: true, over_trim: false },
+      { symbol: '2454', name: '聯發科', value_twd: 18000000, weight: 0.22, over_limit: true, over_trim: true },
+      { symbol: '2330', name: '台積電', value_twd: 999, weight: 0.5, over_limit: true, over_trim: true, mode: 'paper' },
     ],
-    single_name_max: 0.1,
+    single_name_max: 0.15,
+    single_name_trim: 0.2,
     pegatron_pre_earnings: true,
     cash_brake: {
       enabled: true,
@@ -763,8 +766,12 @@ test('總覽 shows net worth and quick entry', async ({ page }) => {
   });
   if (fold.width === 390) expect(fold.bottom).toBeLessThanOrEqual(fold.height);
   await page.getByRole('button', { name: '個股' }).click();
-  await expect(page.locator('.light-panel')).toContainText('個股上限 10.0%');
+  await expect(page.locator('.light-panel')).toContainText('不加碼線 15.0%');
+  await expect(page.locator('.light-panel')).toContainText('減碼線 20.0%');
+  await expect(page.locator('.light-panel')).toContainText('暫停加碼');
+  await expect(page.locator('.light-panel')).toContainText('建議分批減碼');
   await expect(page.locator('.light-panel')).toContainText('紙上倉 台積電');
+  await expect(page.locator('.light-panel')).toContainText('財報前不交易');
   await page.locator('.today-reasons a').first().click();
   await expect(page.locator('#sec-cash')).toBeInViewport();
   await expect(page).toHaveURL(/#\/overview/);

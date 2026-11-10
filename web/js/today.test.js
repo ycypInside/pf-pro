@@ -85,8 +85,9 @@ test('a triggered cash brake pauses DCA ahead of a cap breach', () => {
       thresholds: { cash_pct_total: 0.08, net_cash_pct_nw: 0.02 },
       reason: '現金佔總資產 6.0%，低於 8%',
     },
+    single_name_trim: 0.2,
     single_stocks: [
-      { symbol: '2330', name: '台積電', weight: 0.16, over_limit: true },
+      { symbol: '2330', name: '台積電', weight: 0.22, over_limit: true, over_trim: true },
     ],
   }), { now });
   assert.equal(model.headline, '暫停定額');
@@ -98,53 +99,61 @@ test('a triggered cash brake pauses DCA ahead of a cap breach', () => {
   assert.equal(model.reasons.length <= 3, true);
 });
 
-test('the API 10% cap is shown as-is and does not become 15% or 20%', () => {
+test('over_limit without a trim line pauses adds and does not invent 15% or 20%', () => {
   const model = buildToday(book({
     single_name_max: 0.1,
     single_stocks: [{ symbol: '2330', name: '台積電', weight: 0.12, over_limit: true }],
   }), { now });
-  assert.equal(model.headline, '建議減碼檢視');
+  assert.notEqual(model.headline, '建議減碼檢視');
   assert.equal(model.thresholds.singleCap, 0.1);
+  assert.equal(model.thresholds.trimAbove, null);
+  assert.equal(light(model, 'single').tone, 'yellow');
   const text = light(model, 'single').lines.join('\n');
-  assert.match(text, /個股上限 10\.0%/);
-  assert.match(text, /台積電 12\.0% · 超過上限/);
-  assert.doesNotMatch(text, /15\.0%|20\.0%/);
-  assert.equal(JSON.stringify(model.reasons).includes('15.0%'), false);
+  assert.match(text, /不加碼線 10\.0%/);
+  assert.match(text, /台積電 12\.0% · 暫停加碼/);
+  assert.doesNotMatch(text, /減碼線|15\.0%|20\.0%|建議分批減碼/);
+  assert.equal(JSON.stringify(model.reasons).includes('建議減碼檢視'), false);
 });
 
-test('optional add and trim lines from settings do not replace the API cap', () => {
-  const over = buildToday(book({
-    single_name_max: 0.1,
-    single_stocks: [{ symbol: '2330', name: '台積電', weight: 0.12, over_limit: true }],
-  }), {
-    now,
-    settings: { target_policy: { single_name_add_max: 0.15, single_name_trim: 0.2 } },
-  });
-  const text = light(over, 'single').lines.join('\n');
-  assert.match(text, /個股上限 10\.0%/);
-  assert.match(text, /不加碼線 15\.0%/);
-  assert.match(text, /減碼線 20\.0%/);
-  assert.equal(over.headline, '建議減碼檢視');
+test('15% pauses adds and 20% is the only trim', () => {
+  const held = buildToday(book({
+    single_name_max: 0.15,
+    single_name_trim: 0.2,
+    single_stocks: [{ symbol: '2330', name: '台積電', weight: 0.12, over_limit: false, over_trim: false }],
+  }), { now });
+  assert.equal(light(held, 'single').tone, 'green');
+  assert.equal(held.headline, '照定額');
 
-  const between = buildToday(book({
-    single_name_max: 0.2,
-    single_stocks: [{ symbol: '2330', name: '台積電', weight: 0.16, over_limit: false }],
-  }), {
-    now,
-    settings: { target_policy: { single_name_add_max: 0.15, single_name_trim: 0.2 } },
-  });
-  assert.equal(light(between, 'single').tone, 'yellow');
-  assert.equal(between.headline, '照定額');
-  assert.match(between.reasons.map((item) => item.text).join(' '), /不加碼線 15\.0%/);
+  const pause = buildToday(book({
+    single_name_max: 0.15,
+    single_name_trim: 0.2,
+    single_stocks: [{ symbol: '2330', name: '台積電', weight: 0.16, over_limit: true, over_trim: false }],
+  }), { now });
+  assert.equal(light(pause, 'single').tone, 'yellow');
+  assert.equal(pause.headline, '照定額');
+  assert.match(light(pause, 'single').lines.join('\n'), /不加碼線 15\.0%/);
+  assert.match(light(pause, 'single').lines.join('\n'), /減碼線 20\.0%/);
+  assert.match(light(pause, 'single').lines.join('\n'), /暫停加碼/);
+  assert.doesNotMatch(pause.reasons.map((item) => item.text).join(' '), /建議分批減碼/);
+
+  const trim = buildToday(book({
+    single_name_max: 0.15,
+    single_name_trim: 0.2,
+    single_stocks: [{ symbol: '2330', name: '台積電', weight: 0.22, over_limit: true, over_trim: true }],
+  }), { now });
+  assert.equal(light(trim, 'single').tone, 'red');
+  assert.equal(trim.headline, '建議減碼檢視');
+  assert.match(light(trim, 'single').lines.join('\n'), /建議分批減碼/);
+  assert.match(trim.reasons.map((item) => item.text).join(' '), /超過減碼線 20\.0%/);
 });
 
-test('a name within two points of the API cap is yellow', () => {
+test('a name under the no-add line stays green', () => {
   const model = buildToday(book({
     single_stocks: [{ symbol: '2330', name: '台積電', weight: 0.09, over_limit: false }],
   }), { now });
-  assert.equal(light(model, 'single').tone, 'yellow');
+  assert.equal(light(model, 'single').tone, 'green');
   assert.equal(model.headline, '照定額');
-  assert.match(model.reasons.map((item) => item.text).join(' '), /接近個股上限/);
+  assert.equal(model.reasons.some((item) => item.text.includes('暫停加碼')), false);
 });
 
 test('stocks and funds are one band against bonds and cash', () => {
@@ -245,33 +254,51 @@ test('cash within one point of an open brake is yellow and still 照定額', () 
 test('4938 inside the pre-earnings window is not a trim', () => {
   const model = buildToday(book({
     pegatron_pre_earnings: true,
+    single_name_max: 0.15,
+    single_name_trim: 0.2,
     single_stocks: [
-      { symbol: '4938', name: '和碩', asset_id: '4938', weight: 0.18, over_limit: true },
+      { symbol: '4938', name: '和碩', asset_id: '4938', weight: 0.22, over_limit: true, over_trim: true },
     ],
     advice: [{ level: 'info', title: '和碩 4938：接近財報公布前', tag: 'compliance' }],
   }), { now });
   assert.equal(model.headline, '照定額');
   assert.equal(light(model, 'window').tone, 'red');
-  assert.equal(light(model, 'single').tone, 'red');
+  assert.notEqual(light(model, 'single').tone, 'red');
+  assert.match(light(model, 'single').lines.join('\n'), /財報前不交易/);
+  assert.doesNotMatch(light(model, 'single').lines.join('\n'), /建議分批減碼/);
   assert.match(model.reasons.map((item) => item.text).join(' '), /4938 財報前不交易/);
-  assert.equal(model.reasons.some((item) => item.text.includes('超過個股上限')), false);
+  assert.equal(model.reasons.some((item) => item.text.includes('建議分批減碼')), false);
 });
 
-test('4938 outside the window can be a trim', () => {
+test('4938 outside the window is a trim only when over_trim', () => {
+  const pause = buildToday(book({
+    pegatron_pre_earnings: false,
+    single_name_max: 0.15,
+    single_name_trim: 0.2,
+    single_stocks: [{ symbol: '4938', name: '和碩', weight: 0.18, over_limit: true, over_trim: false }],
+  }), { now });
+  assert.equal(pause.headline, '照定額');
+  assert.equal(light(pause, 'single').tone, 'yellow');
+
   const model = buildToday(book({
     pegatron_pre_earnings: false,
-    single_stocks: [{ symbol: '4938', name: '和碩', weight: 0.18, over_limit: true }],
+    single_name_max: 0.15,
+    single_name_trim: 0.2,
+    single_stocks: [{ symbol: '4938', name: '和碩', weight: 0.22, over_limit: true, over_trim: true }],
   }), { now });
   assert.equal(model.headline, '建議減碼檢視');
   assert.equal(light(model, 'window').tone, 'green');
+  assert.equal(light(model, 'single').tone, 'red');
 });
 
-test('a stale quote on an overweight name asks for a check instead of a trim', () => {
+test('a stale quote on an over-trim name asks for a check instead of a trim', () => {
   const model = buildToday(book({
-    single_stocks: [{ symbol: '2330', name: '台積電', weight: 0.16, over_limit: true }],
+    single_name_trim: 0.2,
+    single_stocks: [{ symbol: '2330', name: '台積電', weight: 0.22, over_limit: true, over_trim: true }],
     stale: [{ symbol: '2330', name: '台積電', price_date: '2026-08-01', limit: 7 }],
   }), { now });
   assert.equal(model.headline, '先核對報價');
+  assert.notEqual(model.headline, '建議減碼檢視');
   assert.equal(light(model, 'quotes').tone, 'red');
   assert.equal(model.reasons.some((item) => item.section === 'sec-quotes'), true);
   assert.match(model.banner.text, /有過期報價/);

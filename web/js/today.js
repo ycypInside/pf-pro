@@ -1,8 +1,8 @@
 /**
  * Today's action verdict and limit lights.
- * Thresholds come from the read-only payload (finance_summary / settings).
- * Do not replace them with a remembered policy: the sheet may still report
- * a 10% single-name cap while the owner expects 15% / 20%.
+ * single_name_max is the no-add line (over_limit → 暫停加碼).
+ * single_name_trim is the trim line (over_trim → 建議分批減碼).
+ * Both numbers are shown only when the payload sends them.
  */
 
 import { parsePolicy } from './groups.js';
@@ -10,7 +10,6 @@ import { explainError, isYes } from './money.js';
 import { taipeiToday } from './research.js';
 import { taipeiStamp } from './valuation.js';
 
-export const APPROACH_GAP = 0.02;
 export const CASH_NEAR_GAP = 0.01;
 
 const ADD_KEYS = ['single_name_add_max', 'no_add_above', 'add_max'];
@@ -20,7 +19,7 @@ const BOND = new Set(['bond']);
 const CASH = new Set(['cash']);
 
 const LIGHT_FIELDS = {
-  single: ['single_stocks[].symbol', 'single_stocks[].name', 'single_stocks[].weight', 'single_stocks[].over_limit', 'single_stocks[].mode', 'single_name_max', 'single_name_add_max|no_add_above|add_max', 'single_name_trim|trim_above', 'settings.target_policy'],
+  single: ['single_stocks[].symbol', 'single_stocks[].name', 'single_stocks[].weight', 'single_stocks[].over_limit', 'single_stocks[].over_trim', 'single_stocks[].mode', 'single_name_max', 'single_name_trim', 'settings.target_policy.single_name_trim'],
   band: ['allocation.rows[].bucket', 'allocation.rows[].actual_weight', 'allocation.rows[].target_weight', 'allocation.rows[].drift', 'allocation.band_pct', 'allocation.target', 'allocation.estimated'],
   cash: ['cash_brake.enabled', 'cash_brake.triggered', 'cash_brake.cash_pct_total', 'cash_brake.net_cash_pct_nw', 'cash_brake.thresholds.cash_pct_total', 'cash_brake.thresholds.net_cash_pct_nw', 'cash_brake.reason', 'settings.target_policy.dca_pause', 'advice[].tag=dca_pause'],
   quotes: ['stale[].symbol', 'stale[].asset_id', 'stale[].name', 'stale[].price_date', 'stale[].limit', 'stale[].mode', 'allocation.estimated'],
@@ -68,10 +67,10 @@ export function buildToday(summary, options = {}) {
   const brake = cashView(summary, policy, thresholds);
   const asOfLabel = asOfText(summary, now);
 
-  const over = real.filter((row) => overCap(row, thresholds));
-  const tradableOver = over.filter((row) => !blockedByWindow(row, windowFlag) && !matchesStale(row, staleReal));
-  const staleBlocks = over.filter((row) => !blockedByWindow(row, windowFlag) && matchesStale(row, staleReal));
-  const approach = real.filter((row) => !overCap(row, thresholds) && approaching(row, thresholds));
+  const trimRows = real.filter((row) => overTrim(row, thresholds));
+  const tradableTrim = trimRows.filter((row) => !blockedByWindow(row, windowFlag) && !matchesStale(row, staleReal));
+  const staleBlocks = trimRows.filter((row) => !blockedByWindow(row, windowFlag) && matchesStale(row, staleReal));
+  const pauseAdds = real.filter((row) => overLimit(row, thresholds) && !overTrim(row, thresholds) && !blockedByWindow(row, windowFlag));
   const bandOutside = groups.known && groups.buckets.some((bucket) => bucket.outside);
   const estimates = Array.isArray(summary.allocation && summary.allocation.estimated)
     ? summary.allocation.estimated.filter(Boolean)
@@ -84,7 +83,7 @@ export function buildToday(summary, options = {}) {
     verdictId = 'pause';
     headline = '暫停定額';
     tone = 'stop';
-  } else if (tradableOver.length) {
+  } else if (tradableTrim.length) {
     verdictId = 'trim';
     headline = '建議減碼檢視';
     tone = 'look';
@@ -103,7 +102,7 @@ export function buildToday(summary, options = {}) {
   }
 
   const lights = [
-    singleLight(real, stocks, thresholds),
+    singleLight(real, stocks, thresholds, windowFlag),
     bandLight(groups, estimates),
     cashLight(brake),
     quoteLight(staleReal, real, thresholds, estimates),
@@ -113,8 +112,8 @@ export function buildToday(summary, options = {}) {
   const reasons = takeReasons([
     cashReason(brake),
     windowFlag === true ? { text: '4938 財報前不交易', section: 'sec-pegatron' } : null,
-    tradableOver.length ? { text: trimText(tradableOver, thresholds), section: 'sec-holdings' } : null,
-    !tradableOver.length && approach.length ? { text: approachText(approach[0], thresholds), section: 'sec-holdings' } : null,
+    tradableTrim.length ? { text: trimText(tradableTrim, thresholds), section: 'sec-holdings' } : null,
+    !tradableTrim.length && pauseAdds.length ? { text: pauseAddText(pauseAdds, thresholds), section: 'sec-holdings' } : null,
     staleReal.length ? { text: staleText(staleReal), section: 'sec-quotes' } : null,
     bandOutside ? { text: bandText(groups), section: 'sec-allocation' } : null,
   ]);
@@ -219,6 +218,7 @@ function stockRows(summary) {
     name: String((row && (row.name || row.symbol || row.asset_id)) || '未命名'),
     weight: num(row && row.weight),
     overLimit: isYes(row && row.over_limit),
+    overTrim: isYes(row && row.over_trim),
     paper: isPaper(row),
     raw: row || {},
   }));
@@ -269,20 +269,15 @@ function blockedByWindow(row, windowFlag) {
   return windowFlag === true && isPegatron(row);
 }
 
-function overCap(row, thresholds) {
+function overLimit(row, thresholds) {
   if (row.overLimit) return true;
-  const line = thresholds.singleCap != null ? thresholds.singleCap : thresholds.trimAbove;
-  return above(row.weight, line);
+  return above(row.weight, thresholds.singleCap);
 }
 
-function approaching(row, thresholds) {
-  if (row.weight == null) return false;
-  const cap = thresholds.singleCap != null ? thresholds.singleCap : thresholds.trimAbove;
-  if (thresholds.addMax != null && (cap == null || thresholds.addMax < cap - 1e-9)) {
-    return above(row.weight, thresholds.addMax);
-  }
-  if (cap == null) return false;
-  return row.weight > cap - APPROACH_GAP + 1e-12 && !above(row.weight, cap);
+function overTrim(row, thresholds) {
+  if (row.overTrim) return true;
+  if (thresholds.trimAbove == null) return false;
+  return above(row.weight, thresholds.trimAbove);
 }
 
 function above(weight, line) {
@@ -353,18 +348,16 @@ function hasDcaPlan(summary) {
   return Array.isArray(dca.core_assets) && dca.core_assets.length > 0;
 }
 
-function singleLight(real, all, thresholds) {
-  const red = real.some((row) => overCap(row, thresholds));
-  const yellow = !red && real.some((row) => approaching(row, thresholds));
+function singleLight(real, all, thresholds, windowFlag) {
+  const red = real.some((row) => overTrim(row, thresholds) && !blockedByWindow(row, windowFlag));
+  const yellow = !red && real.some((row) => overLimit(row, thresholds) || overTrim(row, thresholds));
   const tone = red ? 'red' : yellow ? 'yellow' : 'green';
   const lines = [];
-  lines.push(thresholds.singleCap == null ? '個股上限未見於回傳。' : `個股上限 ${pct(thresholds.singleCap)}`);
-  if (thresholds.addMax != null) lines.push(`不加碼線 ${pct(thresholds.addMax)}`);
+  lines.push(thresholds.singleCap == null ? '不加碼線未見於回傳。' : `不加碼線 ${pct(thresholds.singleCap)}`);
   if (thresholds.trimAbove != null) lines.push(`減碼線 ${pct(thresholds.trimAbove)}`);
   if (!real.length) lines.push('沒有實際個股。');
   for (const row of real) {
-    const mark = overCap(row, thresholds) ? '超過上限' : approaching(row, thresholds) ? '接近上限' : '帶內';
-    lines.push(`${row.name} ${pct(row.weight)} · ${mark}`);
+    lines.push(`${row.name} ${pct(row.weight)} · ${stockMark(row, thresholds, windowFlag)}`);
   }
   for (const row of all.filter((item) => item.paper)) {
     lines.push(`紙上倉 ${row.name} ${pct(row.weight)} · 不計入`);
@@ -412,7 +405,7 @@ function quoteLight(stale, real, thresholds, estimates) {
   const hurts = stale.some((item) => {
     const key = norm(item.symbol);
     if (estimateKeys.has(key)) return true;
-    return real.some((row) => overCap(row, thresholds) && matchesStale(row, [item]));
+    return real.some((row) => overTrim(row, thresholds) && matchesStale(row, [item]));
   });
   const lines = stale.map((item) => {
     const limit = item.limit == null ? '' : `，上限 ${item.limit} 天`;
@@ -454,17 +447,23 @@ function cashReason(brake) {
   return null;
 }
 
-function trimText(rows, thresholds) {
-  const line = thresholds.singleCap != null ? thresholds.singleCap : thresholds.trimAbove;
-  const names = rows.slice(0, 2).map((row) => `${row.name} ${pct(row.weight)}`).join('、');
-  return `${names} 超過個股上限 ${pct(line)}`;
+function stockMark(row, thresholds, windowFlag) {
+  if (blockedByWindow(row, windowFlag) && (overTrim(row, thresholds) || overLimit(row, thresholds))) return '財報前不交易';
+  if (overTrim(row, thresholds)) return '建議分批減碼';
+  if (overLimit(row, thresholds)) return '暫停加碼';
+  return '帶內';
 }
 
-function approachText(row, thresholds) {
-  if (thresholds.addMax != null && (thresholds.singleCap == null || thresholds.addMax < thresholds.singleCap)) {
-    return `${row.name} ${pct(row.weight)} 已過不加碼線 ${pct(thresholds.addMax)}`;
-  }
-  return `${row.name} ${pct(row.weight)} 接近個股上限`;
+function trimText(rows, thresholds) {
+  const names = rows.slice(0, 2).map((row) => `${row.name} ${pct(row.weight)}`).join('、');
+  const line = thresholds.trimAbove != null ? `，超過減碼線 ${pct(thresholds.trimAbove)}` : '';
+  return `${names} 建議分批減碼${line}`;
+}
+
+function pauseAddText(rows, thresholds) {
+  const names = rows.slice(0, 2).map((row) => `${row.name} ${pct(row.weight)}`).join('、');
+  const line = thresholds.singleCap != null ? `，超過不加碼線 ${pct(thresholds.singleCap)}` : '';
+  return `${names} 暫停加碼${line}`;
 }
 
 function staleText(rows) {
