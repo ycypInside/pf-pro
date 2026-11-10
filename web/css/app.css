@@ -516,6 +516,91 @@ dialog.sheet::backdrop { background: rgba(22, 32, 28, 0.45); }
 .path-fill { display: block; height: 100%; background: #f6f1e6; }
 .decision { padding: 8px 0; border-top: 1px solid var(--line); min-width: 0; }
 .decision p { margin: 0; }
+.today {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #fffdf8;
+  padding: 12px 12px 8px;
+  margin: 0 0 14px;
+}
+.today h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--muted);
+}
+.today .eyebrow { margin-top: 2px; }
+.today .banner { margin-bottom: 8px; }
+.today-verdict {
+  margin: 2px 0 6px;
+  font-size: 28px;
+  font-weight: 680;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+.today-verdict.tone-stop { color: var(--red); }
+.today-verdict.tone-look { color: var(--amber); }
+.today-verdict.tone-calm { color: var(--green-deep); }
+.today-verdict.tone-muted { color: var(--muted); }
+.today-reasons { display: grid; }
+.today-reasons a {
+  display: block;
+  padding: 2px 0;
+  color: var(--green-deep);
+  font-size: 14px;
+  line-height: 1.35;
+  text-underline-offset: 2px;
+}
+.lights {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 2px;
+  margin-top: 8px;
+}
+.light {
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  border-radius: 10px;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 3px;
+  padding: 4px 0;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.1;
+  color: var(--ink);
+}
+.light[aria-pressed="true"] { background: #f3eee4; }
+.dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 99px;
+  box-shadow: inset 0 0 0 1px rgba(28, 40, 34, 0.16);
+}
+.dot.green { background: var(--green); }
+.dot.yellow { background: #c48a12; }
+.dot.red { background: var(--red); }
+.dot.unknown { background: #c8c2b6; }
+.light-panel {
+  margin-top: 6px;
+  background: #f6f1e6;
+  border-radius: 12px;
+  padding: 8px 10px;
+}
+.light-panel p, .paper-note { margin: 0; font-size: 13px; line-height: 1.4; }
+.light-panel-title { font-weight: 650; }
+.paper-note { margin-top: 6px; color: var(--amber); }
+.today-lines { margin-top: 0; }
+#sec-holdings,
+#sec-quotes,
+#sec-allocation,
+#sec-cash,
+#sec-pegatron {
+  scroll-margin-top: 12px;
+  scroll-margin-bottom: 96px;
+}
 .decision-exit_line { border-left: 3px solid var(--red); padding-left: 8px; }
 .decision-dca_paused { border-left: 3px solid var(--amber); padding-left: 8px; }
 .decision-stale_quote { border-left: 3px solid var(--muted); padding-left: 8px; }
